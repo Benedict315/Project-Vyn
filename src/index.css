@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 40 33% 97%;
+    --background: 220 20% 97%;
     --foreground: 240 20% 16%;
 
     --card: 0 0% 100%;
@@ -15,24 +15,24 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 20% 16%;
 
-    --primary: 174 58% 40%;
+    --primary: 201 100% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 25% 93%;
+    --secondary: 220 18% 93%;
     --secondary-foreground: 240 20% 16%;
 
-    --muted: 40 20% 93%;
-    --muted-foreground: 240 8% 50%;
+    --muted: 220 15% 93%;
+    --muted-foreground: 220 8% 50%;
 
-    --accent: 8 76% 62%;
+    --accent: 272 54% 37%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 18% 89%;
-    --input: 40 18% 89%;
-    --ring: 174 58% 40%;
+    --border: 220 18% 89%;
+    --input: 220 18% 89%;
+    --ring: 201 100% 42%;
 
     --radius: 1rem;
 
@@ -43,14 +43,15 @@
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 174 58% 40%;
+    --sidebar-ring: 201 100% 42%;
 
     /* Custom tokens */
-    --teal: 174 58% 40%;
-    --teal-light: 174 48% 50%;
-    --coral: 8 76% 62%;
-    --coral-light: 8 68% 70%;
-    --warm: 40 33% 97%;
+    --sky: 201 100% 42%;
+    --sky-light: 201 85% 52%;
+    --deep: 215 80% 39%;
+    --deep-light: 215 65% 50%;
+    --grape: 272 54% 37%;
+    --grape-light: 272 44% 50%;
     --surface-raised: 0 0% 100%;
   }
 }
@@ -78,18 +79,18 @@
   }
 
   .card-navy {
-    background: linear-gradient(135deg, hsl(var(--teal)) 0%, hsl(var(--teal-light)) 100%);
+    background: linear-gradient(135deg, hsl(var(--deep)) 0%, hsl(var(--sky)) 100%);
     @apply rounded-2xl text-white;
   }
 
   .btn-emerald {
-    background: linear-gradient(135deg, hsl(var(--coral)) 0%, hsl(var(--coral-light)) 100%);
+    background: linear-gradient(135deg, hsl(var(--deep)) 0%, hsl(var(--grape)) 100%);
     @apply text-white font-bold rounded-2xl px-6 py-3 transition-all duration-200 active:scale-[0.97];
-    box-shadow: 0 4px 12px hsla(var(--coral), 0.3);
+    box-shadow: 0 4px 12px hsla(var(--deep), 0.3);
   }
 
   .btn-emerald:hover {
-    box-shadow: 0 6px 20px hsla(var(--coral), 0.4);
+    box-shadow: 0 6px 20px hsla(var(--deep), 0.4);
   }
 
   .progress-ring {
@@ -97,6 +98,6 @@
   }
 
   .unlock-glow {
-    box-shadow: 0 0 24px hsla(var(--teal), 0.25), 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 0 24px hsla(var(--sky), 0.25), 0 4px 12px rgba(0,0,0,0.06);
   }
 }

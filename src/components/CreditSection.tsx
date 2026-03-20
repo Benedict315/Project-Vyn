@@ -1,11 +1,14 @@
 import { Lock, Sparkles, ArrowDownToLine } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { getCurrentLevel, getNextLevel } from "@/components/ProgressRing";
 import { useState } from "react";
 import confetti from "canvas-confetti";
 
 const CreditSection = () => {
-  const { isUnlocked, creditAmount, creditWithdrawn, withdrawCredit, showUnlockCelebration, setShowUnlockCelebration } = useApp();
+  const { isUnlocked, creditAmount, creditWithdrawn, withdrawCredit, showUnlockCelebration, setShowUnlockCelebration, depositsCount } = useApp();
   const [withdrawing, setWithdrawing] = useState(false);
+  const currentLevel = getCurrentLevel(depositsCount);
+  const nextLevel = getNextLevel(depositsCount);
 
   const handleWithdraw = () => {
     setWithdrawing(true);
@@ -41,28 +44,35 @@ const CreditSection = () => {
     <div className={`card-elevated p-6 border-2 border-primary/20 transition-all duration-700 ${showUnlockCelebration ? "unlock-glow animate-scale-up" : ""}`}>
       <div className="flex items-center gap-2 mb-1">
         <Sparkles className="w-4 h-4 text-primary" />
-        <span className="text-xs font-bold tracking-wide uppercase text-primary">Mi Crédito</span>
+        <span className="text-xs font-bold tracking-wide uppercase text-primary">
+          Crédito — Nivel {currentLevel.name} {currentLevel.emoji}
+        </span>
       </div>
 
       {creditWithdrawn ? (
         <div className="py-4 text-center">
           <p className="text-lg font-bold text-foreground">Crédito Retirado ✅</p>
-          <p className="text-sm text-muted-foreground mt-1">{creditAmount} XLM transferidos a tu wallet</p>
+          <p className="text-sm text-muted-foreground mt-1">{currentLevel.creditAmount} XLM transferidos a tu wallet</p>
         </div>
       ) : (
         <>
           {showUnlockCelebration && (
             <div className="bg-primary/10 rounded-xl p-3 mb-4 mt-2">
               <p className="text-sm font-bold text-primary text-center">
-                🎉 ¡Nivel Plata Alcanzado! Tienes un crédito disponible
+                🎉 ¡Nivel {currentLevel.name} Alcanzado! Tienes un crédito disponible
               </p>
             </div>
           )}
           <div className="flex items-baseline gap-1 mt-3 mb-1">
-            <span className="text-3xl font-extrabold text-foreground tabular-nums">{creditAmount}</span>
+            <span className="text-3xl font-extrabold text-foreground tabular-nums">{currentLevel.creditAmount}</span>
             <span className="text-lg font-semibold text-muted-foreground">XLM</span>
           </div>
-          <p className="text-sm text-muted-foreground mb-5">Crédito disponible</p>
+          <p className="text-sm text-muted-foreground mb-1">Crédito disponible</p>
+          {nextLevel && (
+            <p className="text-xs text-muted-foreground mb-4">
+              Siguiente nivel: <span className="font-bold text-foreground">{nextLevel.name} {nextLevel.emoji}</span> — {nextLevel.creditAmount} XLM con {nextLevel.minDeposits} depósitos
+            </p>
+          )}
           <button
             onClick={handleWithdraw}
             disabled={withdrawing}
