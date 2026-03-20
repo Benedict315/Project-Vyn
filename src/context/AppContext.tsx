@@ -53,6 +53,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isUnlocked: false,
     creditAmount: 300,
     creditWithdrawn: false,
+    withdrawals: [],
   });
   const [showSuccess, setShowSuccess] = useState(false);
   const [showUnlockCelebration, setShowUnlockCelebration] = useState(false);
