@@ -11,6 +11,7 @@ import WalletSetupModal from "@/components/WalletSetupModal";
 import Index from "./pages/Index.tsx";
 import Historial from "./pages/Historial.tsx";
 import Perfil from "./pages/Perfil.tsx";
+import Retiros from "./pages/Retiros.tsx";
 import Onboarding from "./pages/Onboarding.tsx";
 import Login from "./pages/Login.tsx";
 import Notificaciones from "./pages/Notificaciones.tsx";
@@ -85,6 +86,7 @@ const App = () => (
               <Route path="/" element={<RequireAuth><RequireOnboarding><Index /></RequireOnboarding></RequireAuth>} />
               <Route path="/historial" element={<RequireAuth><RequireOnboarding><Historial /></RequireOnboarding></RequireAuth>} />
               <Route path="/perfil" element={<RequireAuth><RequireOnboarding><Perfil /></RequireOnboarding></RequireAuth>} />
+              <Route path="/retiros" element={<RequireAuth><RequireOnboarding><Retiros /></RequireOnboarding></RequireAuth>} />
               <Route path="/notificaciones" element={<RequireAuth><RequireOnboarding><Notificaciones /></RequireOnboarding></RequireAuth>} />
               <Route path="/ayuda" element={<RequireAuth><RequireOnboarding><Ayuda /></RequireOnboarding></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
