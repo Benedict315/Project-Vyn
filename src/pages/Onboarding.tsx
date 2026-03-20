@@ -11,21 +11,21 @@ const steps = [
     title: "Ahorra poquito a poquito 🐷",
     description:
       "Cada semana guardas una parte de lo que ganas. No importa si es poco — lo que cuenta es la constancia. ¡Tú puedes!",
-    bg: "from-purple-light/30 to-white",
+    bg: "from-teal-50 to-white",
   },
   {
     image: onboardingReputation,
     title: "Sube de nivel 🏆",
     description:
       "Con 3 depósitos seguidos alcanzas el Nivel Plata. Así demuestras que eres de fiar y te abres puertas a cosas increíbles.",
-    bg: "from-mint-light/30 to-white",
+    bg: "from-orange-50 to-white",
   },
   {
     image: onboardingCredit,
     title: "¡Recibe tu crédito! 🎉",
     description:
       "Al llegar a Nivel Plata desbloqueas hasta 300 XLM de crédito. Sin papeleo, sin filas — directo a tu celular.",
-    bg: "from-sky-light/30 to-white",
+    bg: "from-rose-50 to-white",
   },
 ];
 
@@ -95,7 +95,7 @@ const Onboarding = () => {
               key={i}
               className={`h-2 rounded-full transition-all duration-300 ${
                 i === current
-                  ? "w-7 bg-primary"
+                  ? "w-7 bg-accent"
                   : "w-2 bg-foreground/15"
               }`}
             />

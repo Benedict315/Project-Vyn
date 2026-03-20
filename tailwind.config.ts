@@ -47,17 +47,13 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        purple: {
-          DEFAULT: "hsl(var(--purple))",
-          light: "hsl(var(--purple-light))",
+        teal: {
+          DEFAULT: "hsl(var(--teal))",
+          light: "hsl(var(--teal-light))",
         },
-        mint: {
-          DEFAULT: "hsl(var(--mint))",
-          light: "hsl(var(--mint-light))",
-        },
-        sky: {
-          DEFAULT: "hsl(var(--sky))",
-          light: "hsl(var(--sky-light))",
+        coral: {
+          DEFAULT: "hsl(var(--coral))",
+          light: "hsl(var(--coral-light))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
@@ -100,9 +96,9 @@ export default {
           "0%": { strokeDashoffset: "100" },
           "100%": { strokeDashoffset: "0" },
         },
-        "pulse-brand": {
-          "0%, 100%": { boxShadow: "0 0 0 0 hsla(255, 72%, 79%, 0.4)" },
-          "50%": { boxShadow: "0 0 0 12px hsla(255, 72%, 79%, 0)" },
+        "pulse-emerald": {
+          "0%, 100%": { boxShadow: "0 0 0 0 hsla(8, 76%, 62%, 0.4)" },
+          "50%": { boxShadow: "0 0 0 12px hsla(8, 76%, 62%, 0)" },
         },
       },
       animation: {
@@ -112,7 +108,7 @@ export default {
         "scale-up": "scale-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         "slide-up": "slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
         "check-draw": "check-draw 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards",
-        "pulse-brand": "pulse-brand 2s ease-in-out infinite",
+        "pulse-emerald": "pulse-emerald 2s ease-in-out infinite",
       },
     },
   },
