@@ -25,7 +25,7 @@ const steps = [
     title: "¡Recibe tu crédito! 🎉",
     description:
       "Al llegar a Nivel Plata desbloqueas hasta 300 XLM de crédito. Sin papeleo, sin filas — directo a tu celular.",
-    bg: "from-rose-50 to-white",
+    bg: "from-purple-50 to-white",
   },
 ];
 
