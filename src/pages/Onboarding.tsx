@@ -18,7 +18,7 @@ const steps = [
     title: "Sube de nivel 🏆",
     description:
       "Con 3 depósitos seguidos alcanzas el Nivel Plata. Así demuestras que eres de fiar y te abres puertas a cosas increíbles.",
-    bg: "from-orange-50 to-white",
+    bg: "from-indigo-50 to-white",
   },
   {
     image: onboardingCredit,
