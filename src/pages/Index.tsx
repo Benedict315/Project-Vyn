@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, FastForward } from "lucide-react";
+import logoVin from "@/assets/logo-vin.png";
 import BalanceCard from "@/components/BalanceCard";
 import ProgressRing from "@/components/ProgressRing";
 import CreditSection from "@/components/CreditSection";
@@ -16,9 +17,12 @@ const Index = () => {
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold text-foreground tracking-tight">Vínculo</h1>
-          <p className="text-xs text-muted-foreground">Tu camino al crédito 💪</p>
+        <div className="flex items-center gap-3">
+          <img src={logoVin} alt="Vin" className="w-9 h-9 object-contain" />
+          <div>
+            <h1 className="text-xl font-extrabold text-foreground tracking-tight">Vin</h1>
+            <p className="text-xs text-muted-foreground">Tu camino al crédito 💪</p>
+          </div>
         </div>
         <button
           onClick={simulateWeek}
