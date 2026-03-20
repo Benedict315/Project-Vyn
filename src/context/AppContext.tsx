@@ -7,6 +7,13 @@ export interface Deposit {
   label: string;
 }
 
+export interface Withdrawal {
+  id: string;
+  amount: number;
+  date: Date;
+  txHash: string;
+}
+
 interface AppState {
   balance: number;
   deposits: Deposit[];
@@ -15,12 +22,14 @@ interface AppState {
   isUnlocked: boolean;
   creditAmount: number;
   creditWithdrawn: boolean;
+  withdrawals: Withdrawal[];
 }
 
 interface AppContextType extends AppState {
   addDeposit: (amount: number) => void;
   simulateWeek: () => void;
   withdrawCredit: () => void;
+  addWithdrawal: (amount: number, txHash: string) => void;
   showSuccess: boolean;
   setShowSuccess: (v: boolean) => void;
   showUnlockCelebration: boolean;
@@ -44,6 +53,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isUnlocked: false,
     creditAmount: 300,
     creditWithdrawn: false,
+    withdrawals: [],
   });
   const [showSuccess, setShowSuccess] = useState(false);
   const [showUnlockCelebration, setShowUnlockCelebration] = useState(false);
@@ -102,6 +112,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState((prev) => ({ ...prev, creditWithdrawn: true }));
   }, []);
 
+  const addWithdrawal = useCallback((amount: number, txHash: string) => {
+    setState((prev) => ({
+      ...prev,
+      balance: Math.max(0, prev.balance - amount),
+      withdrawals: [
+        {
+          id: crypto.randomUUID(),
+          amount,
+          date: new Date(),
+          txHash,
+        },
+        ...prev.withdrawals,
+      ],
+    }));
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -109,6 +135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addDeposit,
         simulateWeek,
         withdrawCredit,
+        addWithdrawal,
         showSuccess,
         setShowSuccess,
         showUnlockCelebration,
