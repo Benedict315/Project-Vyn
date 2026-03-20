@@ -135,6 +135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addDeposit,
         simulateWeek,
         withdrawCredit,
+        addWithdrawal,
         showSuccess,
         setShowSuccess,
         showUnlockCelebration,
