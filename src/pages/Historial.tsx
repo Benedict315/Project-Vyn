@@ -1,7 +1,6 @@
 import { useApp } from "@/context/AppContext";
-import { ArrowUpRight, ArrowDownToLine, Calendar } from "lucide-react";
+import { ArrowUpRight, PiggyBank, ArrowDownToLine, Calendar } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
-import emptyImg from "@/assets/empty-state.png";
 
 const Historial = () => {
   const { deposits, creditWithdrawn, creditAmount } = useApp();
@@ -44,7 +43,9 @@ const Historial = () => {
       <main className="px-5 max-w-md mx-auto">
         {allTransactions.length === 0 ? (
           <div className="card-elevated p-10 flex flex-col items-center text-center opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
-            <img src={emptyImg} alt="Sin transacciones" className="w-28 h-28 mb-3" />
+            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-3">
+              <PiggyBank className="w-7 h-7 text-muted-foreground" />
+            </div>
             <p className="text-sm font-semibold text-foreground mb-0.5">Sin transacciones</p>
             <p className="text-xs text-muted-foreground">Tus depósitos y retiros aparecerán aquí</p>
           </div>
