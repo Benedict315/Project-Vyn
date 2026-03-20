@@ -112,6 +112,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState((prev) => ({ ...prev, creditWithdrawn: true }));
   }, []);
 
+  const addWithdrawal = useCallback((amount: number, txHash: string) => {
+    setState((prev) => ({
+      ...prev,
+      balance: Math.max(0, prev.balance - amount),
+      withdrawals: [
+        {
+          id: crypto.randomUUID(),
+          amount,
+          date: new Date(),
+          txHash,
+        },
+        ...prev.withdrawals,
+      ],
+    }));
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
