@@ -1,6 +1,7 @@
 import { useApp } from "@/context/AppContext";
 import { ArrowUpRight, PiggyBank, ArrowDownToLine, Calendar } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
+import logoVin from "@/assets/logo-vin.png";
 
 const Historial = () => {
   const { deposits, creditWithdrawn, creditAmount } = useApp();
@@ -35,9 +36,12 @@ const Historial = () => {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4">
-        <h1 className="text-xl font-bold text-foreground tracking-tight">Historial</h1>
-        <p className="text-xs text-muted-foreground">Todas tus transacciones</p>
+      <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 flex items-center gap-3">
+        <img src={logoVin} alt="Vin" className="w-7 h-7 object-contain" />
+        <div>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Historial</h1>
+          <p className="text-xs text-muted-foreground">Todas tus transacciones</p>
+        </div>
       </header>
 
       <main className="px-5 max-w-md mx-auto">
