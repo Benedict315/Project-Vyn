@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "¿Es seguro?",
-    a: "Sí. Tus fondos están en la blockchain de Stellar y solo tú tienes acceso a tu wallet mediante Freighter. Vin nunca tiene acceso a tus claves privadas.",
+    a: "Sí. Tus fondos están en la blockchain de Stellar y solo tú tienes acceso a tu wallet mediante Freighter. Vyn nunca tiene acceso a tus claves privadas.",
   },
 ];
 
