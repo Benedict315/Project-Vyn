@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   ArrowDownToLine,
   Fingerprint,
@@ -19,7 +19,18 @@ import confetti from "canvas-confetti";
 import BottomNav from "@/components/BottomNav";
 import logoVin from "@/assets/logo-vin.png";
 
-const DESTINATION_ADDRESS = "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOBER3HEDSW2BKQ";
+// 🚀 IMPORTACIONES NUEVAS PARA SOROBAN
+import { 
+  TransactionBuilder, 
+  Networks, 
+  Operation, 
+  BASE_FEE, 
+  nativeToScVal, 
+  rpc, 
+  Transaction 
+} from "@stellar/stellar-sdk";
+import { CONTRACT_ID, RPC_URL } from "@/stellar/contracts";
+import { fetchContractBalance } from "@/stellar/queries";
 
 const STAKING_OPTIONS = [
   { months: 1, apy: 4, label: "1 Mes" },
@@ -29,7 +40,12 @@ const STAKING_OPTIONS = [
 ];
 
 const Retiros = () => {
-  const { balance, withdrawals, addWithdrawal, stakes, addStake } = useApp();
+  const { withdrawals, addWithdrawal, stakes, addStake } = useApp();
+  
+  // 🌟 ESTADO PARA EL SALDO REAL Y LA WALLET
+  const [realBalance, setRealBalance] = useState<number>(0);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  
   const [modalOpen, setModalOpen] = useState(false);
   const [amount, setAmount] = useState("25");
   const [step, setStep] = useState<"input" | "signing" | "success" | "error">("input");
@@ -40,7 +56,46 @@ const Retiros = () => {
   const [stakeModalOpen, setStakeModalOpen] = useState(false);
   const [stakeAmount, setStakeAmount] = useState("50");
   const [selectedMonths, setSelectedMonths] = useState(3);
-  const [stakeStep, setStakeStep] = useState<"input" | "success">("input");
+  const [stakeStep, setStakeStep] = useState<"input" | "signing" | "success">("input");
+
+  // 1. OBTENER LA DIRECCIÓN DE LA WALLET SOLO UNA VEZ
+  useEffect(() => {
+    const initWallet = async () => {
+      try {
+        if (await isConnected()) {
+          const access = await requestAccess();
+          if (access.address) {
+            setWalletAddress(access.address);
+          }
+        }
+      } catch (error) {
+        console.error("Error conectando Freighter:", error);
+      }
+    };
+    initWallet();
+  }, []); // <-- Array vacío = Solo se ejecuta al abrir la pantalla
+
+  // 2. FUNCIÓN DE CARGA SILENCIOSA (Ya no llama a Freighter)
+  const loadBalance = useCallback(async (address: string) => {
+    try {
+      const balance = await fetchContractBalance(address);
+      setRealBalance(balance);
+    } catch (error) {
+      console.error("Error al cargar el saldo:", error);
+    }
+  }, []);
+
+  // 3. POLLING DE SALDO EN TIEMPO REAL
+  useEffect(() => {
+    if (!walletAddress) return; // Si no hay dirección, no hacemos nada
+    
+    // Carga inicial
+    loadBalance(walletAddress);
+    
+    // Repetir cada 5 segundos
+    const intervalId = setInterval(() => loadBalance(walletAddress), 5000);
+    return () => clearInterval(intervalId);
+  }, [walletAddress, loadBalance]);
 
   const reset = () => {
     setStep("input");
@@ -52,6 +107,7 @@ const Retiros = () => {
   const handleClose = () => {
     reset();
     setModalOpen(false);
+    if (walletAddress) loadBalance(walletAddress); // Recargar saldo al cerrar
   };
 
   const handleStakeClose = () => {
@@ -61,22 +117,99 @@ const Retiros = () => {
     setStakeModalOpen(false);
   };
 
-  const handleStakeConfirm = () => {
+  const handleStakeConfirm = async () => {
     const val = parseFloat(stakeAmount);
-    if (!val || val <= 0 || val > balance) return;
-    addStake(val, selectedMonths);
-    setStakeStep("success");
-    confetti({ particleCount: 60, spread: 50, origin: { y: 0.65 } });
+    if (!val || val <= 0 || val > realBalance) return;
+
+    setStakeStep("signing");
+
+    try {
+      const server = new rpc.Server(RPC_URL);
+      const connected = await isConnected();
+      if (!connected) throw new Error("Instala Freighter para continuar");
+
+      const accessResult = await requestAccess();
+      if (accessResult.error || !accessResult.address) throw new Error("Acceso denegado a Freighter");
+      
+      const sourcePublicKey = accessResult.address;
+      const account = await server.getAccount(sourcePublicKey);
+      
+      const amountInStroops = BigInt(Math.floor(val * 10000000)); // i128
+
+      // 1. Construir la transacción llamando a "stake"
+      let transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.invokeContractFunction({
+            contract: CONTRACT_ID,
+            function: "stake",
+            args: [
+              nativeToScVal(sourcePublicKey, { type: "address" }),
+              nativeToScVal(amountInStroops, { type: "i128" }),
+              nativeToScVal(BigInt(selectedMonths), { type: "u64" }), // <-- Corregido con BigInt por seguridad
+            ],
+          })
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction = await server.prepareTransaction(transaction);
+
+      const signResult = await signTransaction(transaction.toXDR(), {
+        networkPassphrase: Networks.TESTNET,
+      });
+
+      if (signResult.error || !signResult.signedTxXdr) {
+        throw new Error("Firma rechazada por el usuario");
+      }
+
+      const transactionToSubmit = TransactionBuilder.fromXDR(signResult.signedTxXdr, Networks.TESTNET);
+      const submitRes = await server.sendTransaction(transactionToSubmit) as any;
+
+      const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
+
+      if (currentStatus !== "PENDING" && currentStatus !== "SUCCESS") {
+        throw new Error(submitRes.errorResultXdr || "Transacción rechazada por la red");
+      }
+
+      // 2. Esperar confirmación de la red
+      let txStatus = currentStatus;
+      let getTxRes;
+      
+      while (txStatus === "PENDING" || txStatus === "NOT_FOUND") {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        getTxRes = await server.getTransaction(submitRes.hash);
+        txStatus = getTxRes.status.toUpperCase();
+      }
+
+      if (txStatus === "SUCCESS") {
+        addStake(val, selectedMonths); 
+        if (walletAddress) loadBalance(walletAddress); 
+        setStakeStep("success");
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.65 } });
+      } else {
+        console.error("Error en contrato Staking:", getTxRes);
+        throw new Error("El contrato rechazó el staking. Verifica que no tengas uno activo.");
+      }
+
+    } catch (err: any) {
+      console.error("Staking error:", err);
+      alert(err.message || "Error al procesar el Staking");
+      setStakeStep("input");
+    }
   };
 
   const selectedOption = STAKING_OPTIONS.find((o) => o.months === selectedMonths)!;
   const stakeVal = parseFloat(stakeAmount) || 0;
   const estimatedReturn = stakeVal + stakeVal * (selectedOption.apy / 100) * (selectedMonths / 12);
 
+  // 🚀 FUNCIÓN DE RETIRO CON SOROBAN RPC
   const handleWithdraw = async () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) return;
-    if (val > balance) {
+    if (val > realBalance) {
       setErrorMsg("No tienes suficiente saldo para este retiro.");
       setStep("error");
       return;
@@ -86,63 +219,77 @@ const Retiros = () => {
     setErrorMsg("");
 
     try {
+      const server = new rpc.Server(RPC_URL);
       const connected = await isConnected();
-      if (!connected) {
-        setErrorMsg("Freighter no está instalado. Descárgalo en freighter.app");
-        setStep("error");
-        return;
-      }
+      if (!connected) throw new Error("Instala Freighter para continuar");
 
       const accessResult = await requestAccess();
-      if (accessResult.error || !accessResult.address) {
-        setErrorMsg("Conexión con Freighter rechazada. Intenta de nuevo.");
-        setStep("error");
-        return;
-      }
-
+      if (accessResult.error || !accessResult.address) throw new Error("Acceso denegado a Freighter");
+      
       const sourcePublicKey = accessResult.address;
-      const horizonUrl = "https://horizon-testnet.stellar.org";
-      const accountRes = await fetch(`${horizonUrl}/accounts/${sourcePublicKey}`);
+      const account = await server.getAccount(sourcePublicKey);
+      const amountInStroops = BigInt(Math.floor(val * 10000000));
 
-      if (!accountRes.ok) {
-        setErrorMsg("No se encontró tu cuenta en Stellar.");
-        setStep("error");
-        return;
-      }
+      let transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.invokeContractFunction({
+            contract: CONTRACT_ID,
+            function: "withdraw",
+            args: [
+              nativeToScVal(sourcePublicKey, { type: "address" }),
+              nativeToScVal(amountInStroops, { type: "i128" }),
+            ],
+          })
+        )
+        .setTimeout(30)
+        .build();
 
-      const signResult = await signTransaction("", {
-        networkPassphrase: "Test SDF Network ; September 2015",
+      transaction = await server.prepareTransaction(transaction);
+
+      const signResult = await signTransaction(transaction.toXDR(), {
+        networkPassphrase: Networks.TESTNET,
       });
 
-      if (signResult.error) {
-        setErrorMsg("Firma rechazada en Freighter. Intenta de nuevo.");
-        setStep("error");
-        return;
+      if (signResult.error || !signResult.signedTxXdr) {
+        throw new Error("Firma rechazada por el usuario");
       }
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `tx=${encodeURIComponent(signResult.signedTxXdr)}`,
-      });
+      const transactionToSubmit = TransactionBuilder.fromXDR(signResult.signedTxXdr, Networks.TESTNET);
+      const submitRes = await server.sendTransaction(transactionToSubmit) as any;
 
-      let hash = "";
-      if (submitRes.ok) {
-        const submitData = await submitRes.json();
-        hash = submitData.hash || "";
+      const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
+
+      if (currentStatus !== "PENDING" && currentStatus !== "SUCCESS") {
+        throw new Error(submitRes.errorResultXdr || "Transacción rechazada por la red");
       }
 
-      setTxHash(hash);
-      addWithdrawal(val, hash);
-      setStep("success");
-      confetti({ particleCount: 80, spread: 60, origin: { y: 0.65 } });
-    } catch (err) {
+      let txStatus = currentStatus;
+      let getTxRes;
+      
+      while (txStatus === "PENDING" || txStatus === "NOT_FOUND") {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        getTxRes = await server.getTransaction(submitRes.hash);
+        txStatus = getTxRes.status.toUpperCase();
+      }
+
+      if (txStatus === "SUCCESS") {
+        setTxHash(submitRes.hash);
+        addWithdrawal(val, submitRes.hash);
+        setStep("success");
+        if (walletAddress) loadBalance(walletAddress); // Actualizamos saldo
+        confetti({ particleCount: 80, spread: 60, origin: { y: 0.65 } });
+      } else {
+        console.error("Error en contrato:", getTxRes);
+        throw new Error("El contrato rechazó el retiro. Verifica los permisos.");
+      }
+
+    } catch (err: any) {
       console.error("Withdrawal error:", err);
-      const hash = `demo_${Date.now()}`;
-      setTxHash(hash);
-      addWithdrawal(parseFloat(amount), hash);
-      setStep("success");
-      confetti({ particleCount: 80, spread: 60, origin: { y: 0.65 } });
+      setErrorMsg(err.message || "Error al procesar el retiro");
+      setStep("error");
     }
   };
 
@@ -167,15 +314,14 @@ const Retiros = () => {
       </header>
 
       <main className="px-5 max-w-md mx-auto space-y-4">
-        {/* Balance + Withdraw button */}
         <div className="card-elevated p-5 flex items-center justify-between opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-0.5">Saldo disponible</p>
-            <p className="text-2xl font-extrabold text-foreground tabular-nums">{balance} <span className="text-sm font-medium text-muted-foreground">XLM</span></p>
+            <p className="text-2xl font-extrabold text-foreground tabular-nums">{realBalance} <span className="text-sm font-medium text-muted-foreground">XLM</span></p>
           </div>
           <button
             onClick={() => setModalOpen(true)}
-            disabled={balance <= 0}
+            disabled={realBalance <= 0}
             className="btn-emerald flex items-center gap-2 px-5 py-3 text-sm disabled:opacity-40 disabled:pointer-events-none"
           >
             <ArrowDownToLine className="w-4 h-4" />
@@ -183,7 +329,6 @@ const Retiros = () => {
           </button>
         </div>
 
-        {/* ─── STAKING SECTION ─── */}
         <div className="opacity-0 animate-fade-up" style={{ animationDelay: "80ms", animationFillMode: "forwards" }}>
           <div className="flex items-center gap-2 mb-3">
             <Lock className="w-4 h-4 text-accent" />
@@ -206,7 +351,6 @@ const Retiros = () => {
             <Sparkles className="w-5 h-5 text-accent opacity-60 group-hover:opacity-100 transition-opacity" />
           </button>
 
-          {/* Active stakes */}
           {activeStakes.length > 0 && (
             <div className="card-elevated divide-y divide-border">
               <div className="px-4 py-3 flex items-center justify-between">
@@ -261,7 +405,6 @@ const Retiros = () => {
           )}
         </div>
 
-        {/* Withdrawal history */}
         {withdrawals.length === 0 ? (
           <div className="card-elevated p-8 flex flex-col items-center text-center opacity-0 animate-fade-up" style={{ animationDelay: "160ms", animationFillMode: "forwards" }}>
             <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-3">
@@ -334,7 +477,6 @@ const Retiros = () => {
 
       <BottomNav />
 
-      {/* Withdrawal Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={step === "signing" ? undefined : handleClose} />
@@ -356,15 +498,15 @@ const Retiros = () => {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className={`w-full text-3xl font-bold text-foreground bg-secondary rounded-xl px-4 py-4 outline-none focus:ring-2 transition-shadow tabular-nums ${
-                      parseFloat(amount) > balance ? "ring-2 ring-destructive focus:ring-destructive" : "focus:ring-primary/20"
+                      parseFloat(amount) > realBalance ? "ring-2 ring-destructive focus:ring-destructive" : "focus:ring-primary/20"
                     }`}
                     min="1"
-                    max={balance}
+                    max={realBalance}
                   />
-                  {parseFloat(amount) > balance && (
+                  {parseFloat(amount) > realBalance && (
                     <p className="text-xs text-destructive font-semibold mt-1.5 flex items-center gap-1">
                       <AlertCircle className="w-3.5 h-3.5" />
-                      El monto excede tu saldo disponible ({balance} XLM)
+                      El monto excede tu saldo disponible ({realBalance} XLM)
                     </p>
                   )}
                 </div>
@@ -372,7 +514,7 @@ const Retiros = () => {
                   {[10, 25, 50].map((v) => (
                     <button
                       key={v}
-                      onClick={() => setAmount(String(Math.min(v, balance)))}
+                      onClick={() => setAmount(String(Math.min(v, realBalance)))}
                       className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95 ${
                         amount === String(v) ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"
                       }`}
@@ -381,24 +523,23 @@ const Retiros = () => {
                     </button>
                   ))}
                   <button
-                    onClick={() => setAmount(String(balance))}
+                    onClick={() => setAmount(String(realBalance))}
                     className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95 ${
-                      amount === String(balance) ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"
+                      amount === String(realBalance) ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"
                     }`}
                   >
                     Todo
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground mb-6">Disponible: <span className="font-bold text-foreground">{balance} XLM</span></p>
+                <p className="text-xs text-muted-foreground mb-6">Disponible: <span className="font-bold text-foreground">{realBalance} XLM</span></p>
                 <button
                   onClick={handleWithdraw}
-                  disabled={!parseFloat(amount) || parseFloat(amount) > balance}
+                  disabled={!parseFloat(amount) || parseFloat(amount) > realBalance}
                   className="btn-emerald w-full flex items-center justify-center gap-2 py-4 text-base disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <Fingerprint className="w-5 h-5" />
                   Confirmar retiro con Freighter
                 </button>
-                <p className="text-center text-[10px] text-muted-foreground mt-3">Se abrirá Freighter para firmar la transacción</p>
               </>
             )}
 
@@ -408,12 +549,7 @@ const Retiros = () => {
                   <Fingerprint className="w-8 h-8 text-primary animate-pulse" />
                 </div>
                 <p className="text-lg font-bold text-foreground mb-1">Procesando retiro...</p>
-                <p className="text-sm text-muted-foreground text-center max-w-[260px]">Confirma en la extensión Freighter para enviar los fondos</p>
-                <div className="mt-6 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
+                <p className="text-sm text-muted-foreground text-center max-w-[260px]">Aprobando retiro en el Smart Contract y esperando a la red.</p>
               </div>
             )}
 
@@ -424,14 +560,13 @@ const Retiros = () => {
                 </div>
                 <p className="text-xl font-bold text-foreground mb-1">¡Retiro exitoso! 💸</p>
                 <p className="text-sm text-muted-foreground mb-1">Se enviaron <span className="font-bold text-foreground">{amount} XLM</span> a tu wallet</p>
-                <p className="text-xs text-muted-foreground mb-6">Los fondos llegarán en segundos</p>
-                {txHash && !txHash.startsWith("demo_") && (
-                  <a href={`https://stellar.expert/explorer/testnet/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline mb-4">
+                {txHash && (
+                  <a href={`https://stellar.expert/explorer/testnet/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline mt-4 mb-2">
                     <ExternalLink className="w-3.5 h-3.5" />
                     Ver en el explorador
                   </a>
                 )}
-                <button onClick={handleClose} className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all">Listo</button>
+                <button onClick={handleClose} className="w-full rounded-xl bg-primary text-primary-foreground py-3 mt-4 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all">Listo</button>
               </div>
             )}
 
@@ -446,14 +581,12 @@ const Retiros = () => {
                   <button onClick={handleClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors active:scale-[0.97]">Cancelar</button>
                   <button onClick={() => setStep("input")} className="flex-1 rounded-xl bg-primary text-primary-foreground py-2.5 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all">Reintentar</button>
                 </div>
-                <a href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer" className="mt-4 text-xs text-primary hover:underline">¿No tienes Freighter? Descárgala aquí →</a>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Staking Modal */}
       {stakeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={handleStakeClose} />
@@ -470,7 +603,6 @@ const Retiros = () => {
                 </div>
                 <p className="text-sm text-muted-foreground mb-5">Bloquea tus fondos y genera rendimientos</p>
 
-                {/* Period selector */}
                 <label className="text-xs font-semibold text-muted-foreground mb-2 block uppercase tracking-wide">Plazo</label>
                 <div className="flex gap-2 mb-5">
                   {STAKING_OPTIONS.map((opt) => (
@@ -484,32 +616,30 @@ const Retiros = () => {
                       }`}
                     >
                       <span className="block text-sm font-bold">{opt.label}</span>
-                      <span className="block text-[10px] text-muted-foreground mt-0.5">17% APY</span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">{opt.apy}% APY</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Amount */}
                 <label className="text-xs font-semibold text-muted-foreground mb-2 block uppercase tracking-wide">Monto (XLM)</label>
                 <input
                   type="number"
                   value={stakeAmount}
                   onChange={(e) => setStakeAmount(e.target.value)}
                   className={`w-full text-3xl font-bold text-foreground bg-secondary rounded-xl px-4 py-4 outline-none focus:ring-2 transition-shadow tabular-nums mb-1 ${
-                    stakeVal > balance ? "ring-2 ring-destructive focus:ring-destructive" : "focus:ring-accent/20"
+                    stakeVal > realBalance ? "ring-2 ring-destructive focus:ring-destructive" : "focus:ring-accent/20"
                   }`}
                   min="1"
-                  max={balance}
+                  max={realBalance}
                 />
-                {stakeVal > balance && (
+                {stakeVal > realBalance && (
                   <p className="text-xs text-destructive font-semibold mb-2 flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
-                    El monto excede tu saldo disponible ({balance} XLM)
+                    El monto excede tu saldo disponible ({realBalance} XLM)
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground mb-5">Disponible: <span className="font-bold text-foreground">{balance} XLM</span></p>
+                <p className="text-xs text-muted-foreground mb-5">Disponible: <span className="font-bold text-foreground">{realBalance} XLM</span></p>
 
-                {/* Projection card */}
                 <div className="bg-secondary rounded-xl p-4 mb-5">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="w-4 h-4 text-accent" />
@@ -533,19 +663,23 @@ const Retiros = () => {
 
                 <button
                   onClick={handleStakeConfirm}
-                  disabled={!stakeVal || stakeVal > balance || stakeVal <= 0}
+                  disabled={!stakeVal || stakeVal > realBalance || stakeVal <= 0}
                   className="w-full rounded-xl bg-accent text-accent-foreground py-4 text-base font-bold shadow-md hover:bg-accent/90 active:scale-[0.97] transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2"
                 >
                   <Lock className="w-5 h-5" />
-                  Bloquear {stakeVal} XLM por {selectedOption.label.toLowerCase()}
+                  Bloquear {stakeVal} XLM
                 </button>
-
-                <p className="text-center text-[10px] text-muted-foreground mt-3">
-                  Los fondos se bloquearán hasta el vencimiento del plazo
-                </p>
               </>
             )}
-
+            {stakeStep === "signing" && (
+              <div className="flex flex-col items-center py-10">
+                <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mb-5">
+                  <Lock className="w-8 h-8 text-accent animate-pulse" />
+                </div>
+                <p className="text-lg font-bold text-foreground mb-1">Bloqueando fondos...</p>
+                <p className="text-sm text-muted-foreground text-center max-w-[260px]">Aprobando el staking en Soroban y esperando confirmación de la red.</p>
+              </div>
+            )}
             {stakeStep === "success" && (
               <div className="flex flex-col items-center py-8 animate-scale-up">
                 <div className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mb-5">
@@ -555,9 +689,7 @@ const Retiros = () => {
                 <p className="text-sm text-muted-foreground mb-1">
                   <span className="font-bold text-foreground">{stakeAmount} XLM</span> bloqueados por {selectedOption.label.toLowerCase()}
                 </p>
-                <p className="text-xs text-muted-foreground mb-1">APY: <span className="font-bold text-accent">{selectedOption.apy}%</span></p>
-                <p className="text-xs text-muted-foreground mb-6">Ganancia estimada: <span className="font-bold text-accent">+{(stakeVal * (selectedOption.apy / 100) * (selectedMonths / 12)).toFixed(1)} XLM</span></p>
-                <button onClick={handleStakeClose} className="w-full rounded-xl bg-accent text-accent-foreground py-3 text-sm font-semibold shadow-sm hover:bg-accent/90 active:scale-[0.97] transition-all">Listo</button>
+                <button onClick={handleStakeClose} className="w-full mt-6 rounded-xl bg-accent text-accent-foreground py-3 text-sm font-semibold shadow-sm hover:bg-accent/90 active:scale-[0.97] transition-all">Listo</button>
               </div>
             )}
           </div>

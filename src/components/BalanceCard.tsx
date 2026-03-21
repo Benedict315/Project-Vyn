@@ -6,48 +6,63 @@ import { Wallet, RefreshCw } from "lucide-react";
 const BalanceCard = () => {
   const [realBalance, setRealBalance] = useState<number | string>("...");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // NUEVO: Guardamos la dirección de la wallet para no pedirla a cada rato
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
 
-  // Le agregamos un parámetro "silent" para que no gire el ícono cuando lo hace automático
-  const loadBalance = useCallback(async (silent = false) => {
+  // 1. PASO UNO: Pedir acceso a Freighter SOLO UNA VEZ al montar el componente
+  useEffect(() => {
+    const initWallet = async () => {
+      try {
+        if (await isConnected()) {
+          const access = await requestAccess();
+          if (access.address) {
+            setWalletAddress(access.address);
+          } else {
+            setRealBalance(0);
+          }
+        } else {
+          setRealBalance(0);
+        }
+      } catch (error) {
+        console.error("Error conectando Freighter al inicio:", error);
+        setRealBalance(0);
+      }
+    };
+    initWallet();
+  }, []); // <-- El array vacío garantiza que esto pase SOLO UNA VEZ
+
+  // 2. PASO DOS: Consultar el saldo usando la dirección ya guardada
+  const loadBalance = useCallback(async (address: string, silent = false) => {
     if (!silent) setIsRefreshing(true);
     
-    //console.log("🔍 1. Consultando saldo...");
     try {
-      if (await isConnected()) {
-        const access = await requestAccess();
-        if (access.address) {
-          //console.log("✅ 2. Billetera detectada:", access.address);
-          
-          // Llamamos a la blockchain
-          const balance = await fetchContractBalance(access.address);
-          //console.log("💰 3. Saldo devuelto por Soroban:", balance);
-          
-          setRealBalance(balance);
-        } else {
-          console.warn("⚠️ Billetera conectada pero no devolvió dirección");
-        }
-      } else {
-        console.warn("⚠️ Freighter NO está conectado");
-      }
+      // Ya no llamamos a requestAccess() aquí, solo vamos directo a Soroban
+      const balance = await fetchContractBalance(address);
+      setRealBalance(balance);
     } catch (error) {
-      console.error("❌ Error en la ruta del saldo:", error);
+      console.error("❌ Error consultando el saldo:", error);
     } finally {
       if (!silent) setIsRefreshing(false);
     }
   }, []);
 
+  // 3. PASO TRES: El Polling (Magia en tiempo real)
   useEffect(() => {
-    // 1. Carga inicial inmediata (hace girar el ícono)
-    loadBalance(false);
+    // Si todavía no tenemos la dirección, no hacemos nada
+    if (!walletAddress) return;
 
-    // 2. MAGIA DE TIEMPO REAL: Pregunta a la red cada 5 segundos (silenciosamente)
+    // Carga inicial inmediata
+    loadBalance(walletAddress, false);
+
+    // Preguntamos a Soroban cada 5 segundos (silenciosamente)
     const intervalId = setInterval(() => {
-      loadBalance(true); 
-    }, 5000); // 5000 ms = 5 segundos
+      loadBalance(walletAddress, true); 
+    }, 5000);
 
-    // 3. Limpieza: Si el usuario cambia de página, apagamos el temporizador
+    // Limpieza
     return () => clearInterval(intervalId);
-  }, [loadBalance]);
+  }, [walletAddress, loadBalance]); // <-- Depende de walletAddress
 
   return (
     <div className="bg-primary rounded-2xl p-6 text-primary-foreground shadow-lg w-full relative overflow-hidden">
@@ -59,10 +74,9 @@ const BalanceCard = () => {
           <span className="text-sm font-semibold tracking-wider opacity-90">MI AHORRO</span>
         </div>
         
-        {/* Botón manual por si el usuario es impaciente */}
         <button 
-          onClick={() => loadBalance(false)} 
-          disabled={isRefreshing}
+          onClick={() => walletAddress && loadBalance(walletAddress, false)} 
+          disabled={isRefreshing || !walletAddress}
           className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-all active:scale-95 disabled:opacity-50"
           title="Actualizar saldo"
         >
@@ -78,7 +92,7 @@ const BalanceCard = () => {
       </div>
 
       <p className="text-primary-foreground/70 text-sm mt-2 relative z-10">
-        Saldo disponible
+        Saldo disponible en contrato
       </p>
     </div>
   );
