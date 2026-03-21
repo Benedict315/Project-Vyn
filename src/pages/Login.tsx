@@ -64,7 +64,7 @@ const Login = () => {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
       {/* Brand */}
       <div className="mb-10 text-center">
-        <img src={logoVin} alt="Vin" className="w-20 h-20 object-contain mx-auto mb-4" />
+        <img src={logoVin} alt="Vyn" className="w-20 h-20 object-contain mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-foreground font-nunito leading-tight">
           {mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}
         </h1>

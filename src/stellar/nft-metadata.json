@@ -1,7 +1,7 @@
 {
-  "name": "Vin Reputation NFT",
-  "symbol": "VINREP",
-  "description": "NFT de reputación otorgado por la plataforma Vin al alcanzar el nivel requerido de depósitos en la red Stellar.",
+  "name": "Vyn Reputation NFT",
+  "symbol": "VYNREP",
+  "description": "NFT de reputación otorgado por la plataforma Vyn al alcanzar el nivel requerido de depósitos en la red Stellar.",
   "contract_id": "CAIYBGMKSA5V5EYUFKGD5OCWWS5M34YC7MKUKE3BOQE2WZP3R7A4S2D2",
   "network": "stellar-testnet",
   "rpc_url": "https://soroban-testnet.stellar.org",
@@ -27,7 +27,7 @@
           "deposits_count": "Número total de depósitos realizados",
           "total_volume": "Volumen total ahorrado en XLM",
           "issued_at": "Timestamp ISO 8601 del momento de emisión",
-          "platform": "vin"
+          "platform": "vyn"
         }
       }
     ]
