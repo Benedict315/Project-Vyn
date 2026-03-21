@@ -10,13 +10,12 @@ interface NFTModalProps {
   txHash?: string;
 }
 
-// 🚀 RUTA BASE DE TU GITHUB
-// IMPORTANTE: Cambia "TU_USUARIO" por tu nombre de usuario en GitHub y "TU_REPOSITORIO" por el nombre de tu repo (probablemente sea Stellar-Hack-vinculo-credito).
-const GITHUB_BASE_URL = "https://raw.githubusercontent.com/Kalebtron1/Stellar-Hack-vinculo-credito/main/images";
+// 🚀 RUTA BASE EXACTA DE TU REPOSITORIO DE GITHUB
+const GITHUB_BASE_URL = "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/images";
 
-// 🚀 MAPEO EXACTO A TUS NOMBRES DE ARCHIVO
+// MAPEO A TUS NOMBRES DE ARCHIVO
 const NFT_IMAGES: Record<string, string> = {
-  "Bronce": `${GITHUB_BASE_URL}/bronce.png`, // (Asegúrate de tener un bronce.png si vas a mostrar este nivel en el modal)
+  "Bronce": `${GITHUB_BASE_URL}/bronce.png`,
   "Plata": `${GITHUB_BASE_URL}/plata.png`,
   "Oro": `${GITHUB_BASE_URL}/oro.png`,
   "Diamante": `${GITHUB_BASE_URL}/diamante.png`,
@@ -75,7 +74,7 @@ const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVol
                 alt={`NFT Nivel ${level}`} 
                 className="w-full h-full object-cover rounded-xl drop-shadow-md group-hover:scale-110 transition-transform duration-500"
                 onError={(e) => {
-                  // Fallback: Si no has subido los cambios a GitHub aún, mostrará esto para que no se rompa
+                  // Fallback: Si la imagen falla en cargar (ej. si no se ha hecho push a github)
                   (e.target as HTMLImageElement).style.display = 'none';
                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                 }}

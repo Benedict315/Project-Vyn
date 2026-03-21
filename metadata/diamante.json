@@ -1,10 +1,22 @@
 {
   "name": "Vínculo - Nivel Diamante",
-  "description": "SBT de reputación otorgado al superar los 50 puntos de Trust Score en la red Stellar.",
-  "image": "https://tudominio.com/imagenes/diamante.png",
+  "description": "SBT de reputación otorgado al superar los 500 puntos de Trust Score en la red Stellar.",
+  "image": "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/images/diamante.png",
+  "external_url": "https://vinculo.app",
   "attributes": [
-    { "trait_type": "Nivel", "value": "Diamante" },
-    { "trait_type": "Beneficio de Crédito", "value": " 2500 XLM" },
-    { "trait_type": "Plataforma", "value": "Vínculo" }
+    {
+      "trait_type": "Nivel",
+      "value": "Diamante"
+    },
+    {
+      "trait_type": "Beneficio de Crédito",
+      "value": 2500,
+      "display_type": "number",
+      "unit": "XLM"
+    },
+    {
+      "trait_type": "Plataforma",
+      "value": "Vínculo"
+    }
   ]
 }

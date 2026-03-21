@@ -1,10 +1,22 @@
 {
   "name": "Vínculo - Nivel Oro",
-  "description": "SBT de reputación otorgado al superar los 50 puntos de Trust Score en la red Stellar.",
-  "image": "https://tudominio.com/imagenes/oro.png",
+  "description": "SBT de reputación otorgado al superar los 150 puntos de Trust Score en la red Stellar.",
+  "image": "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/images/oro.png",
+  "external_url": "https://vinculo.app",
   "attributes": [
-    { "trait_type": "Nivel", "value": "Oro" },
-    { "trait_type": "Beneficio de Crédito", "value": " 900 XLM" },
-    { "trait_type": "Plataforma", "value": "Vínculo" }
+    {
+      "trait_type": "Nivel",
+      "value": "Oro"
+    },
+    {
+      "trait_type": "Beneficio de Crédito",
+      "value": 900,
+      "display_type": "number",
+      "unit": "XLM"
+    },
+    {
+      "trait_type": "Plataforma",
+      "value": "Vínculo"
+    }
   ]
 }

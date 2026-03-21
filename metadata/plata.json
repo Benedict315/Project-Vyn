@@ -1,10 +1,26 @@
 {
   "name": "Vínculo - Nivel Plata",
   "description": "SBT de reputación otorgado al superar los 50 puntos de Trust Score en la red Stellar.",
-  "image": "https://tudominio.com/imagenes/plata.png",
+  "image": "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/images/plata.png",
+  "external_url": "https://vinculo.app",
   "attributes": [
-    { "trait_type": "Nivel", "value": "Plata" },
-    { "trait_type": "Beneficio de Crédito", "value": " 300 XLM" },
-    { "trait_type": "Plataforma", "value": "Vínculo" }
+    {
+      "trait_type": "Nivel",
+      "value": "Plata"
+    },
+    {
+      "trait_type": "Beneficio de Crédito",
+      "value": 300,
+      "display_type": "number",
+      "unit": "XLM"
+    },
+    {
+      "trait_type": "Plataforma",
+      "value": "Vínculo"
+    },
+    {
+      "trait_type": "Score mínimo",
+      "value": 50
+    }
   ]
 }

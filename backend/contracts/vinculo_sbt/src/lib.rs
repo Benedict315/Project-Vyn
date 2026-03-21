@@ -3,8 +3,10 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 #[contracttype]
 pub enum DataKey {
-    Admin,         // Guarda quién es el dueño del contrato (Tu servidor Node.js)
-    Tier(Address), // Guarda el nivel del usuario (0=Bronce/Revocado, 1=Plata, 2=Oro, 3=Diamante, 4=Platino)
+    Admin,
+    Tier(Address),
+    Name,
+    Symbol,
 }
 
 #[contract]
@@ -12,56 +14,74 @@ pub struct VinculoSBT;
 
 #[contractimpl]
 impl VinculoSBT {
-    // 1. Inicializa el contrato definiendo quién es el administrador (Tu Backend)
+    // 1. Inicialización con metadatos base
     pub fn init(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("El contrato ya fue inicializado");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        
+        // Definimos la identidad global del token
+        env.storage().instance().set(&DataKey::Name, &String::from_str(&env, "Vinculo Credito SBT"));
+        env.storage().instance().set(&DataKey::Symbol, &String::from_str(&env, "VINC"));
     }
 
-    // 2. Mintear o Subir de Nivel (Requiere la firma de la wallet Admin)
+    // --- FUNCIONES ESTÁNDAR PARA WALLETS (INTERFAZ METADATA) ---
+    
+    pub fn name(env: Env) -> String {
+        env.storage().instance().get(&DataKey::Name).unwrap()
+    }
+
+    pub fn symbol(env: Env) -> String {
+        env.storage().instance().get(&DataKey::Symbol).unwrap()
+    }
+
+    // La función que las wallets y exploradores usarán para buscar la imagen y los traits
+    pub fn token_uri(env: Env, user: Address) -> String {
+        let tier = env.storage().persistent().get(&DataKey::Tier(user)).unwrap_or(0u32);
+        
+        // 🚀 URLs dinámicas apuntando a los archivos JSON en tu repositorio
+        match tier {
+            1 => String::from_str(&env, "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/metadata/plata.json"),
+            2 => String::from_str(&env, "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/metadata/oro.json"),
+            3 => String::from_str(&env, "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/metadata/diamante.json"),
+            4 => String::from_str(&env, "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/metadata/platino.json"),
+            // Nivel 0 (Bronce o Revocado)
+            _ => String::from_str(&env, "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/metadata/bronce.json"),
+        }
+    }
+
+    // --- LÓGICA DE NEGOCIO Y CONTROL DE ACCESO ---
+
     pub fn mint(env: Env, admin: Address, user: Address, tier: u32) {
-        // Exigimos que la transacción venga firmada por el Admin
-        admin.require_auth(); 
+        admin.require_auth();
         
         let saved_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        if admin != saved_admin {
-            panic!("Solo el administrador puede mintear NFTs");
+        if admin != saved_admin { 
+            panic!("Solo el administrador puede mintear NFTs"); 
         }
 
-        // Guardamos el nivel del usuario (1=Plata, 2=Oro, 3=Diamante, 4=Platino)
-        env.storage().persistent().set(&DataKey::Tier(user.clone()), &tier);
+        // 🚀 NUEVA REGLA: Validar que el usuario no tenga ya este mismo nivel
+        let current_tier = env.storage().persistent().get(&DataKey::Tier(user.clone())).unwrap_or(0u32);
+        if current_tier == tier {
+            panic!("El usuario ya posee un NFT de este nivel exacto");
+        }
+
+        // Actualizamos o asignamos el nuevo nivel
+        env.storage().persistent().set(&DataKey::Tier(user), &tier);
     }
 
-    // 3. Revocar/Castigar (Los bajamos a Nivel 0 = Bronce/Sin crédito)
+    // Función extra por si un usuario incumple pagos y quieres bajarlo a Bronce (0)
     pub fn revoke(env: Env, admin: Address, user: Address) {
         admin.require_auth();
         let saved_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if admin != saved_admin {
             panic!("Solo el administrador puede revocar");
         }
-
-        // Nivel 0 significa que no es acreedor a crédito o fue revocado
-        env.storage().persistent().set(&DataKey::Tier(user.clone()), &0u32);
+        env.storage().persistent().set(&DataKey::Tier(user), &0u32);
     }
 
-    // 4. Consultar el Nivel actual
     pub fn get_tier(env: Env, user: Address) -> u32 {
         env.storage().persistent().get(&DataKey::Tier(user)).unwrap_or(0)
-    }
-
-    // 5. La magia visual: Dependiendo del nivel, la DApp mostrará una imagen distinta
-    pub fn get_token_uri(env: Env, user: Address) -> String {
-        let tier = Self::get_tier(env.clone(), user);
-        
-        match tier {
-            1 => String::from_str(&env, "https://tuservidor.com/nft/plata.json"),
-            2 => String::from_str(&env, "https://tuservidor.com/nft/oro.json"),
-            3 => String::from_str(&env, "https://tuservidor.com/nft/diamante.json"),
-            4 => String::from_str(&env, "https://tuservidor.com/nft/platino.json"),
-            // Si el nivel es 0, mostramos el estado base (Bronce / Sin beneficios)
-            _ => String::from_str(&env, "https://tuservidor.com/nft/bronce_default.json"), 
-        }
     }
 }
