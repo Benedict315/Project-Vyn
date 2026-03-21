@@ -237,6 +237,16 @@ const Perfil = () => {
         />
       )}
 
+      <NFTModal
+        open={showNFTModal}
+        onClose={() => setShowNFTModal(false)}
+        walletAddress={walletAddress || ""}
+        level={level}
+        depositsCount={depositsCount}
+        totalVolume={balance}
+        txHash={nftTxHash}
+      />
+
       <BottomNav />
     </div>
   );
