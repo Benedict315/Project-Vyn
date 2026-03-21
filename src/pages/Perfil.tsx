@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Shield, Wallet, Star, ChevronRight, LogOut, HelpCircle, Bell, Pencil, Loader2, Award } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import WalletSetupModal from "@/components/WalletSetupModal";
+import NFTModal from "@/components/NFTModal";
 import logoVin from "@/assets/logo-vin.png";
 
 const Perfil = () => {
@@ -20,6 +21,8 @@ const Perfil = () => {
   const [showWalletModal, setShowWalletModal] = useState(false);
   
   const [isMinting, setIsMinting] = useState(false);
+  const [showNFTModal, setShowNFTModal] = useState(false);
+  const [nftTxHash, setNftTxHash] = useState<string | undefined>();
 
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0] || "Usuario";
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
@@ -44,9 +47,10 @@ const Perfil = () => {
       });
       
       const data = await response.json();
-      
-      if (response.ok && data.status === "minted") {
-        alert("¡Felicidades! NFT Recibido con éxito en tu wallet.");
+
+      if (data.status === "minted") {
+        setNftTxHash(data.txHash);
+        setShowNFTModal(true);
       } else {
         // Esto captura mensajes como "Aún eres nivel Bronce" enviados por el servidor
         alert(data.message || data.error || "Error al procesar el NFT");
@@ -86,7 +90,7 @@ const Perfil = () => {
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-2 flex items-center gap-3">
-        <img src={logoVin} alt="Vin" className="w-7 h-7 object-contain" />
+        <img src={logoVin} alt="Vyn" className="w-7 h-7 object-contain" />
         <h1 className="text-xl font-bold text-foreground tracking-tight">Perfil</h1>
       </header>
 
@@ -214,7 +218,7 @@ const Perfil = () => {
           ))}
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground pt-2 pb-4">Vin v1.0 · Stellar Network</p>
+        <p className="text-center text-[10px] text-muted-foreground pt-2 pb-4">Vyn v1.0 · Stellar Network</p>
       </main>
 
       {showWalletModal && (
@@ -225,6 +229,16 @@ const Perfil = () => {
           }}
         />
       )}
+
+      <NFTModal
+        open={showNFTModal}
+        onClose={() => setShowNFTModal(false)}
+        walletAddress={walletAddress || ""}
+        level={level}
+        depositsCount={depositsCount}
+        totalVolume={balance}
+        txHash={nftTxHash}
+      />
 
       <BottomNav />
     </div>

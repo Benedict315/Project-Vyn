@@ -30,7 +30,7 @@ const mockNotifications: Notification[] = [
   },
   {
     id: "3",
-    title: "Bienvenido a Vin",
+    title: "Bienvenido a Vyn",
     message: "Tu cuenta ha sido creada exitosamente. ¡Comienza a ahorrar!",
     time: "Hace 3 días",
     read: true,

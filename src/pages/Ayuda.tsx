@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 
 const faqs = [
   {
-    q: "¿Qué es Vin?",
-    a: "Vin es una plataforma que te ayuda a construir historial financiero ahorrando pequeñas cantidades semanales en la red Stellar. Al demostrar constancia, desbloqueas acceso a microcréditos.",
+    q: "¿Qué es Vyn?",
+    a: "Vyn es una plataforma que te ayuda a construir historial financiero ahorrando pequeñas cantidades semanales en la red Stellar. Al demostrar constancia, desbloqueas acceso a microcréditos.",
   },
   {
     q: "¿Cómo funciona el ahorro?",
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "¿Es seguro?",
-    a: "Sí. Tus fondos están en la blockchain de Stellar y solo tú tienes acceso a tu wallet mediante Freighter. Vin nunca tiene acceso a tus claves privadas.",
+    a: "Sí. Tus fondos están en la blockchain de Stellar y solo tú tienes acceso a tu wallet mediante Freighter. Vyn nunca tiene acceso a tus claves privadas.",
   },
 ];
 
@@ -53,7 +53,7 @@ const Ayuda = () => {
             Revisa las preguntas frecuentes o contáctanos directamente.
           </p>
           <a
-            href="mailto:soporte@vin.app"
+            href="mailto:soporte@vyn.app"
             className="flex items-center gap-2 text-sm font-semibold text-primary hover:underline active:scale-[0.97] transition-transform"
           >
             <MessageCircle className="w-4 h-4" />
@@ -125,7 +125,7 @@ const Ayuda = () => {
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground pt-2">Vin v1.0 · Stellar Network</p>
+        <p className="text-center text-[10px] text-muted-foreground pt-2">Vyn v1.0 · Stellar Network</p>
       </main>
     </div>
   );
