@@ -10,7 +10,8 @@ import logoVin from "@/assets/logo-vin.png";
 
 const Perfil = () => {
   const navigate = useNavigate();
-  const { balance, depositsCount, requiredDeposits, isUnlocked, creditWithdrawn } = useApp();
+  // 🚀 CORRECCIÓN: Agregamos 'deposits' aquí para que no sea undefined al enviarlo
+  const { balance, depositsCount, requiredDeposits, isUnlocked, creditWithdrawn, deposits } = useApp();
   const { user, signOut } = useAuth();
   const level = isUnlocked ? "Plata" : "Bronce";
 
@@ -18,41 +19,41 @@ const Perfil = () => {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [showWalletModal, setShowWalletModal] = useState(false);
   
-  // NUEVO ESTADO: Para controlar el botón mientras Node.js mintea el NFT
   const [isMinting, setIsMinting] = useState(false);
 
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0] || "Usuario";
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
-  // FUNCIÓN ACTUALIZADA CON LOADING STATE
   const handleClaimNFT = async () => {
     if (!walletAddress) {
-      alert("Por favor, conecta tu wallet primero para poder recibir el NFT.");
+      alert("Por favor, conecta tu wallet primero.");
       return;
     }
 
     setIsMinting(true);
     try {
+      // 🚀 USANDO PUERTO 3000
       const response = await fetch("http://localhost:3000/api/evaluate-and-mint", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userAddress: walletAddress, 
-          depositsCount: depositsCount, 
-          totalVolume: balance 
+          deposits: deposits // 🚀 Mandando el historial completo para el Risk Engine
         })
       });
       
       const data = await response.json();
-      if (data.status === "minted") {
+      
+      if (response.ok && data.status === "minted") {
         alert("¡Felicidades! NFT Recibido con éxito en tu wallet.");
       } else {
-        alert(data.message);
+        // Esto captura mensajes como "Aún eres nivel Bronce" enviados por el servidor
+        alert(data.message || data.error || "Error al procesar el NFT");
       }
     } catch (error) {
       console.error("Error pidiendo el NFT:", error);
-      alert("Hubo un error de conexión con el servidor.");
+      alert("Hubo un error de conexión con el servidor en el puerto 3000.");
     } finally {
       setIsMinting(false);
     }
@@ -90,7 +91,6 @@ const Perfil = () => {
       </header>
 
       <main className="px-5 max-w-md mx-auto space-y-4">
-        {/* Avatar + Name */}
         <div className="card-elevated p-6 flex items-center gap-4 opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
           {avatarUrl ? (
             <img src={avatarUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
@@ -105,7 +105,6 @@ const Perfil = () => {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-3 opacity-0 animate-fade-up" style={{ animationDelay: "100ms", animationFillMode: "forwards" }}>
           <div className="card-elevated p-4 text-center">
             <Wallet className="w-4 h-4 text-muted-foreground mx-auto mb-1.5" />
@@ -124,7 +123,6 @@ const Perfil = () => {
           </div>
         </div>
 
-        {/* Reputation card */}
         <div
           className={`card-elevated p-5 border-2 opacity-0 animate-fade-up ${isUnlocked ? "border-primary/20" : "border-transparent"}`}
           style={{ animationDelay: "200ms", animationFillMode: "forwards" }}
@@ -140,11 +138,9 @@ const Perfil = () => {
             />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mb-4">
-            
             <span className={isUnlocked ? "text-primary font-semibold" : ""}>{isUnlocked ? "✓ Desbloqueado" : "En progreso"}</span>
           </div>
 
-          {/* NUEVO: BOTÓN DE RECLAMAR NFT */}
           {isUnlocked && (
             <button
               onClick={handleClaimNFT}
@@ -156,7 +152,7 @@ const Perfil = () => {
               ) : (
                 <Award className="w-5 h-5" />
               )}
-              {isMinting ? "Generando NFT en Stellar..." : "Reclamar NFT de Nivel"}
+              {isMinting ? "Minteando SBT en Soroban..." : "Reclamar NFT de Nivel"}
             </button>
           )}
 
@@ -167,8 +163,6 @@ const Perfil = () => {
           )}
         </div>
         
-
-        {/* Wallet info */}
         <div className="card-elevated p-5 opacity-0 animate-fade-up" style={{ animationDelay: "300ms", animationFillMode: "forwards" }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -177,7 +171,7 @@ const Perfil = () => {
             </div>
             <button
               onClick={() => setShowWalletModal(true)}
-              className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline active:scale-[0.97]"
+              className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
             >
               <Pencil className="w-3 h-3" />
               {walletAddress ? "Editar" : "Agregar"}
@@ -195,7 +189,7 @@ const Perfil = () => {
           ) : (
             <button
               onClick={() => setShowWalletModal(true)}
-              className="w-full bg-secondary rounded-xl px-4 py-4 text-center hover:bg-secondary/80 transition-colors active:scale-[0.98]"
+              className="w-full bg-secondary rounded-xl px-4 py-4 text-center hover:bg-secondary/80 transition-colors"
             >
               <p className="text-sm text-muted-foreground">Sin wallet conectada</p>
               <p className="text-xs text-primary font-semibold mt-1">Toca para agregar</p>
@@ -203,7 +197,6 @@ const Perfil = () => {
           )}
         </div>
 
-        {/* Menu */}
         <div className="card-elevated divide-y divide-border opacity-0 animate-fade-up" style={{ animationDelay: "400ms", animationFillMode: "forwards" }}>
           {menuItems.map(({ icon: Icon, label, detail, destructive, action }) => (
             <button
