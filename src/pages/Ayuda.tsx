@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 
 const faqs = [
   {
-    q: "¿Qué es Vin?",
-    a: "Vin es una plataforma que te ayuda a construir historial financiero ahorrando pequeñas cantidades semanales en la red Stellar. Al demostrar constancia, desbloqueas acceso a microcréditos.",
+    q: "¿Qué es Vyn?",
+    a: "Vyn es una plataforma que te ayuda a construir historial financiero ahorrando pequeñas cantidades semanales en la red Stellar. Al demostrar constancia, desbloqueas acceso a microcréditos.",
   },
   {
     q: "¿Cómo funciona el ahorro?",
