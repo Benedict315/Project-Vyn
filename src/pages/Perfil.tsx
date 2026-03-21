@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Shield, Wallet, Star, ChevronRight, LogOut, HelpCircle, Bell, Pencil, Loader2, Award } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import WalletSetupModal from "@/components/WalletSetupModal";
+import NFTModal from "@/components/NFTModal";
 import logoVin from "@/assets/logo-vin.png";
 
 const Perfil = () => {
