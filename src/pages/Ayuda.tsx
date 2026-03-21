@@ -125,7 +125,7 @@ const Ayuda = () => {
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground pt-2">Vin v1.0 · Stellar Network</p>
+        <p className="text-center text-[10px] text-muted-foreground pt-2">Vyn v1.0 · Stellar Network</p>
       </main>
     </div>
   );

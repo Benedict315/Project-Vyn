@@ -39,7 +39,7 @@ const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVol
             <div className="absolute inset-[3px] rounded-2xl bg-card flex flex-col items-center justify-center gap-2">
               <Award className="w-14 h-14 text-primary" />
               <p className="text-lg font-extrabold text-foreground tracking-tight">Nivel {level}</p>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Vin · Stellar</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Vyn · Stellar</p>
             </div>
           </div>
 

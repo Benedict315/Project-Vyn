@@ -225,7 +225,7 @@ const Perfil = () => {
           ))}
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground pt-2 pb-4">Vin v1.0 · Stellar Network</p>
+        <p className="text-center text-[10px] text-muted-foreground pt-2 pb-4">Vyn v1.0 · Stellar Network</p>
       </main>
 
       {showWalletModal && (
