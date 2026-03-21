@@ -11,16 +11,16 @@ const BalanceCard = () => {
   const loadBalance = useCallback(async (silent = false) => {
     if (!silent) setIsRefreshing(true);
     
-    console.log("🔍 1. Consultando saldo...");
+    //console.log("🔍 1. Consultando saldo...");
     try {
       if (await isConnected()) {
         const access = await requestAccess();
         if (access.address) {
-          console.log("✅ 2. Billetera detectada:", access.address);
+          //console.log("✅ 2. Billetera detectada:", access.address);
           
           // Llamamos a la blockchain
           const balance = await fetchContractBalance(access.address);
-          console.log("💰 3. Saldo devuelto por Soroban:", balance);
+          //console.log("💰 3. Saldo devuelto por Soroban:", balance);
           
           setRealBalance(balance);
         } else {
@@ -78,7 +78,7 @@ const BalanceCard = () => {
       </div>
 
       <p className="text-primary-foreground/70 text-sm mt-2 relative z-10">
-        Saldo disponible en contrato
+        Saldo disponible
       </p>
     </div>
   );
