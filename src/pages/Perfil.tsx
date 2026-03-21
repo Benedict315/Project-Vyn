@@ -49,7 +49,8 @@ const Perfil = () => {
       
       const data = await response.json();
       if (data.status === "minted") {
-        alert("¡Felicidades! NFT Recibido con éxito en tu wallet.");
+        setNftTxHash(data.txHash);
+        setShowNFTModal(true);
       } else {
         alert(data.message);
       }
