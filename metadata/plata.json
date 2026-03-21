@@ -1,0 +1,10 @@
+{
+  "name": "Vínculo - Nivel Plata",
+  "description": "SBT de reputación otorgado al superar los 50 puntos de Trust Score en la red Stellar.",
+  "image": "https://tudominio.com/imagenes/plata.png",
+  "attributes": [
+    { "trait_type": "Nivel", "value": "Plata" },
+    { "trait_type": "Beneficio de Crédito", "value": "   XLM" },
+    { "trait_type": "Plataforma", "value": "Vínculo" }
+  ]
+}
