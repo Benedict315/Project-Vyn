@@ -41,7 +41,7 @@ const Perfil = () => {
     const fetchRiskScore = async () => {
       if (deposits.length === 0) return;
       try {
-        const response = await fetch("http://localhost:3000/api/calculate-score", {
+        const response = await fetch(`/api/calculate-score`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address: "SIMULACION", deposits })
@@ -74,7 +74,7 @@ const Perfil = () => {
     }
     setIsMinting(true);
     try {
-      const response = await fetch("http://localhost:3000/api/evaluate-and-mint", {
+      const response = await fetch(`/api/evaluate-and-mint`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userAddress: walletAddress, deposits })
@@ -187,7 +187,7 @@ const Perfil = () => {
               <span className="text-primary font-semibold">✓ Desbloqueado</span>
             ) : (
               <span className="flex items-center gap-1 font-medium">
-                <Lock className="w-3 h-3" /> Bloqueado (Bronce)
+                <Lock className="w-3 h-3" /> Bloqueado 
               </span>
             )}
             <span className="font-semibold">{visualPercentage}%</span>

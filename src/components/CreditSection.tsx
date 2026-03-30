@@ -62,7 +62,7 @@ const CreditSection = () => {
           // Guardamos la wallet real del usuario
           setRegisteredWallet(profile.wallet_address);
 
-          const response = await fetch("http://localhost:3000/api/get-available-credit", {
+          const response = await fetch(`/api/get-available-credit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userAddress: profile.wallet_address })

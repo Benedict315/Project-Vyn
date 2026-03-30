@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
-
+import { v4 as uuidv4 } from 'uuid';
 export interface Deposit {
   id: string;
   amount: number;
@@ -82,19 +82,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addDeposit = useCallback((amount: number) => {
     setState((prev) => {
       const newCount = prev.depositsCount + 1;
-      const unlocked = newCount >= prev.requiredDeposits;
+      // Ya no tocamos prev.balance aquí, porque Stellar es la fuente de verdad.
       return {
         ...prev,
-        balance: prev.balance + amount,
         depositsCount: newCount,
-        isUnlocked: unlocked,
         deposits: [
           {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             amount,
             date: new Date(),
-            label: `Depósito semanal #${newCount}`,
-            daysAgo: 0, // 🚀 NUEVO: Entra con 0 días de antigüedad
+            label: `Depósito on-chain`,
+            daysAgo: 0,
           },
           ...prev.deposits,
         ],

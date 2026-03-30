@@ -190,6 +190,6 @@ app.post('/api/evaluate-and-mint', async (req, res) => {
   res.json({ message: "Nivel insuficiente", status: "pending" });
 });
 
-app.listen(PORT, () => { 
-  console.log(`\n🚀 SERVIDOR VÍNCULO ACTIVO EN PUERTO ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => { 
+  console.log(`\n🚀 SERVIDOR VÍNCULO ACTIVO EN PUERTO ${PORT} (Accesible en red local)`);
 });
