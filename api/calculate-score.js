@@ -1,46 +1,109 @@
-function weightedMean(deposits = []) {
-  if (!deposits || deposits.length === 0) return 0;
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const { amount, daysAgo } of deposits) {
-    const weight = 1 / (daysAgo + 1);
-    weightedSum += (amount || 0) * weight;
-    totalWeight += weight;
+const HORIZON_URL = "https://horizon-testnet.stellar.org";
+
+// --- MOTOR DE REPUTACIÓN CALIBRADO (3000 XLM = 50 PTS) ---
+function computeFinancialReputation(history, totalBalance) {
+  if (history.length === 0) return { score: 0, tier: 0, tierName: "Bronce" };
+
+  let totalDeposited = 0;
+  let totalWithdrawn = 0;
+  let weightedVolume = 0;
+  const now = new Date();
+
+  history.forEach((tx) => {
+    // Factor de tiempo: transacciones de hace 1 mes valen menos que las de hoy
+    const daysAgo = Math.floor((now - tx.date) / (1000 * 60 * 60 * 24));
+    const timeWeight = 1 / (daysAgo + 1);
+
+    if (tx.type === "deposit") {
+      totalDeposited += tx.amount;
+      weightedVolume += tx.amount * timeWeight;
+    } else {
+      totalWithdrawn += tx.amount;
+    }
+  });
+
+  // 1. Tasa de Retención (Mide qué tanto dinero se queda en el protocolo)
+  const retentionRate = totalDeposited > 0 ? (totalBalance / totalDeposited) : 0;
+
+  // 2. Factor de Actividad (Logarítmico para premiar número de operaciones sin explotar)
+  const activityFactor = Math.log10(history.length + 1);
+
+  // 3. CÁLCULO FINAL CALIBRADO
+  // Dividimos entre 60 para que 3000 XLM ≈ 50 Puntos (Nivel Plata)
+  // Esto hace que el préstamo de 300 XLM sea el 10% del balance necesario.
+  const SENSITIVITY_FACTOR = 60; 
+  let score = (weightedVolume * retentionRate * activityFactor) / SENSITIVITY_FACTOR;
+
+  // 4. Penalización por vaciado de cuenta (Seguridad extra)
+  if (totalBalance < (totalDeposited * 0.1)) {
+    score = score * 0.2; // Si tiene menos del 10% de lo que ingresó, el score cae 80%
   }
-  return totalWeight === 0 ? 0 : weightedSum / totalWeight;
-}
 
-function meanAbsoluteDeviation(deposits = []) {
-  if (!deposits || deposits.length === 0) return 0;
-  const amounts = deposits.map((d) => d.amount || 0);
-  const mean = amounts.reduce((acc, v) => acc + v, 0) / amounts.length;
-  return amounts.reduce((acc, v) => acc + Math.abs(v - mean), 0) / amounts.length;
-}
-
-function computeScoreAndTier(wMean, mad, n) {
-  let score = 0;
-  if (wMean > 0 && mad <= wMean) {
-    score = (wMean * (1 - mad / wMean)) * Math.log(n + 1);
-  }
-
+  // --- MAPEO DE TIERS (Mantenemos tus rangos) ---
   let tier = 0;
   let tierName = "Bronce";
 
-  if (score >= 1000) { tier = 4; tierName = "Platino"; } 
-  else if (score >= 500) { tier = 3; tierName = "Diamante"; } 
-  else if (score >= 150) { tier = 2; tierName = "Oro"; } 
+  if (score >= 1000) { tier = 4; tierName = "Platino"; }
+  else if (score >= 500) { tier = 3; tierName = "Diamante"; }
+  else if (score >= 150) { tier = 2; tierName = "Oro"; }
   else if (score >= 50) { tier = 1; tierName = "Plata"; }
 
-  return { score: parseFloat(score.toFixed(4)), tier, tierName };
+  return { 
+    score: parseFloat(score.toFixed(2)), 
+    tier, 
+    tierName,
+    metrics: {
+      retention: parseFloat(retentionRate.toFixed(2)),
+      activity: parseFloat(activityFactor.toFixed(2)),
+      volumeIn: totalDeposited,
+      volumeOut: totalWithdrawn
+    }
+  };
 }
 
-export default function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+// --- LECTOR DE 40 REGISTROS REALES ---
+async function getCleanHistory(userAddress) {
+  try {
+    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=100&order=desc`);
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    
+    return data._embedded.records
+      .filter(op => 
+        (op.type === 'account_debited' || op.type === 'account_credited') && 
+        parseFloat(op.amount) >= 1.0 // Ignoramos spam/polvo
+      )
+      .map(op => ({
+        amount: parseFloat(op.amount),
+        type: op.type === 'account_debited' ? "deposit" : "withdrawal",
+        date: new Date(op.created_at)
+      }))
+      .slice(0, 40); // Leemos exactamente los 40 registros que pediste
+  } catch (e) {
+    return [];
   }
+}
 
-  const { deposits } = req.body;
-  const wMean = weightedMean(deposits);
-  const mad = meanAbsoluteDeviation(deposits);
-  res.json(computeScoreAndTier(wMean, mad, (deposits || []).length));
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { address, totalDeposited } = req.body;
+  if (!address) return res.status(400).json({ error: "Wallet requerida" });
+
+  try {
+    const history = await getCleanHistory(address);
+    // Usamos el balance actual que viene del contrato (totalDeposited)
+    const result = computeFinancialReputation(history, Number(totalDeposited) || 0);
+    
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 }

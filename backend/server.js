@@ -19,12 +19,12 @@ app.use(cors());
 app.use(express.json());
 
 const RPC_URL = "https://soroban-testnet.stellar.org";
+const HORIZON_URL = "https://horizon-testnet.stellar.org"; // <-- Añadido Horizon
 const server = new rpc.Server(RPC_URL);
 
 // ─────────────────────────────────────────────
 // CONFIGURACIÓN DE CRÉDITO
 // ─────────────────────────────────────────────
-
 const CREDIT_LIMITS = {
   0: { name: "Bronce", amount: 0 },
   1: { name: "Plata", amount: 300 },
@@ -34,9 +34,8 @@ const CREDIT_LIMITS = {
 };
 
 // ─────────────────────────────────────────────
-// HELPERS MATEMÁTICOS
+// HELPERS MATEMÁTICOS (Tu Motor de Riesgo)
 // ─────────────────────────────────────────────
-
 function weightedMean(deposits = []) {
   if (!deposits || deposits.length === 0) return 0;
   let weightedSum = 0;
@@ -74,9 +73,62 @@ function computeScoreAndTier(wMean, mad, n) {
 }
 
 // ─────────────────────────────────────────────
-// ENDPOINT: CONSULTAR CRÉDITO (SIMULACIÓN) 🔗
+// NUEVO: LECTOR DE HISTORIAL BLOCKCHAIN (HORIZON) ⏱️
 // ─────────────────────────────────────────────
+async function getUserBlockchainHistory(userAddress, totalBalance) {
+  try {
+    console.log(`[DEBUG] ⏳ Buscando historial en Horizon para: ${userAddress}`);
+    
+    // 1. Consultamos las últimas 100 operaciones del usuario
+    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/operations?limit=100&order=desc`);
+    
+    if (!response.ok) throw new Error("No se pudo leer la API de Horizon");
+    
+    const data = await response.json();
+    let transactionDates = [];
 
+    // 2. Filtramos interacciones con Smart Contracts (invoke_host_function)
+    data._embedded.records.forEach(op => {
+      if (op.type === 'invoke_host_function' && op.transaction_successful) {
+         transactionDates.push(new Date(op.created_at));
+      }
+    });
+
+    // 3. Limitamos a los últimos 30 movimientos
+    transactionDates = transactionDates.slice(0, 30);
+
+    // Fallback: Si no hay historial pero hay saldo (ej. fondeo directo sin contrato)
+    if (transactionDates.length === 0) {
+      console.log(`[DEBUG] ⚠️ No hay interacciones de contrato. Usando saldo base.`);
+      return [{ amount: totalBalance, daysAgo: 0 }];
+    }
+
+    // 4. Construimos el array para la matemática
+    const averageAmount = totalBalance / transactionDates.length;
+    const now = new Date();
+
+    const deposits = transactionDates.map(date => {
+      const diffTime = Math.abs(now - date);
+      const daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Ms a Días
+      
+      return {
+        amount: averageAmount,
+        daysAgo: daysAgo
+      };
+    });
+
+    console.log(`[DEBUG] 📊 Se generaron ${deposits.length} registros desde Horizon.`);
+    return deposits;
+
+  } catch (error) {
+    console.error(`[DEBUG] 💥 Error en Horizon:`, error.message);
+    return [{ amount: totalBalance, daysAgo: 0 }];
+  }
+}
+
+// ─────────────────────────────────────────────
+// ENDPOINT: CONSULTAR TIER Y CRÉDITO 🔗
+// ─────────────────────────────────────────────
 app.post("/api/get-available-credit", async (req, res) => {
   const { userAddress } = req.body;
   if (!userAddress) return res.status(400).json({ error: "Falta wallet" });
@@ -84,17 +136,15 @@ app.post("/api/get-available-credit", async (req, res) => {
   try {
     console.log(`[DEBUG] 🔍 Consultando Tier para: ${userAddress}`);
 
-    // 1. Cargamos una cuenta temporal para la simulación
     const adminKeypair = Keypair.fromSecret(process.env.SECRET_KEY_ADMIN);
     const sourceAccount = await server.getAccount(adminKeypair.publicKey());
 
-    // 2. Creamos la transacción de "lectura"
     const tx = new TransactionBuilder(sourceAccount, { 
       fee: BASE_FEE, 
       networkPassphrase: Networks.TESTNET 
     })
     .addOperation(
-      Operation.invokeContractFunction({ // ✅ Nombre estándar
+      Operation.invokeContractFunction({
         contract: process.env.NFT_CONTRACT_ID,
         function: "get_tier",
         args: [nativeToScVal(userAddress, { type: "address" })]
@@ -103,7 +153,6 @@ app.post("/api/get-available-credit", async (req, res) => {
     .setTimeout(30)
     .build();
 
-    // 3. Simulamos la transacción para obtener el valor de retorno
     const simulation = await server.simulateTransaction(tx);
 
     let finalTier = 0;
@@ -112,8 +161,7 @@ app.post("/api/get-available-credit", async (req, res) => {
     }
 
     const config = CREDIT_LIMITS[finalTier] || CREDIT_LIMITS[0];
-    console.log(`[DEBUG] ✅ Tier: ${finalTier} (${config.name})`);
-
+    
     return res.json({
       success: true,
       tier: finalTier,
@@ -131,7 +179,6 @@ app.post("/api/get-available-credit", async (req, res) => {
 // ─────────────────────────────────────────────
 // FUNCIÓN PARA MINTEAR NFT 🚀
 // ─────────────────────────────────────────────
-
 async function mintNftOnChain(userAddress, tier) {
   try {
     const adminKeypair = Keypair.fromSecret(process.env.SECRET_KEY_ADMIN);
@@ -142,7 +189,7 @@ async function mintNftOnChain(userAddress, tier) {
         networkPassphrase: Networks.TESTNET 
     })
       .addOperation(
-        Operation.invokeContractFunction({ // ✅ Nombre estándar
+        Operation.invokeContractFunction({
           contract: process.env.NFT_CONTRACT_ID,
           function: "mint", 
           args: [
@@ -167,29 +214,54 @@ async function mintNftOnChain(userAddress, tier) {
 }
 
 // ─────────────────────────────────────────────
-// OTROS ENDPOINTS
+// ENDPOINT: CALCULAR SCORE DE RIESGO 🧮
 // ─────────────────────────────────────────────
+app.post("/api/calculate-score", async (req, res) => {
+  const { address, totalDeposited } = req.body;
+  
+  if (!address) return res.status(400).json({ error: "Falta wallet" });
 
-app.post("/api/calculate-score", (req, res) => {
-  const { deposits } = req.body;
-  const wMean = weightedMean(deposits);
-  const mad = meanAbsoluteDeviation(deposits);
-  res.json(computeScoreAndTier(wMean, mad, (deposits || []).length));
+  // 1. Obtenemos el historial real desde Horizon
+  const depositsHistory = await getUserBlockchainHistory(address, Number(totalDeposited) || 0);
+
+  // 2. Calculamos las métricas
+  const wMean = weightedMean(depositsHistory);
+  const mad = meanAbsoluteDeviation(depositsHistory);
+  const result = computeScoreAndTier(wMean, mad, depositsHistory.length);
+  
+  res.json(result);
 });
 
+// ─────────────────────────────────────────────
+// ENDPOINT: EVALUAR Y MINTEAR 🏅
+// ─────────────────────────────────────────────
 app.post('/api/evaluate-and-mint', async (req, res) => {
-  const { userAddress, deposits } = req.body;
-  const wMean = weightedMean(deposits);
-  const mad = meanAbsoluteDeviation(deposits);
-  const { tier, tierName } = computeScoreAndTier(wMean, mad, (deposits || []).length);
+  const { userAddress, totalVolume } = req.body;
+  
+  if (!userAddress) return res.status(400).json({ error: "Falta wallet" });
+
+  // 1. Validamos usando datos reales de la blockchain antes de permitir mintear
+  const depositsHistory = await getUserBlockchainHistory(userAddress, Number(totalVolume) || 0);
+  const wMean = weightedMean(depositsHistory);
+  const mad = meanAbsoluteDeviation(depositsHistory);
+  
+  // 2. Extraemos el Nivel que las matemáticas dictan que merece
+  const { tier } = computeScoreAndTier(wMean, mad, depositsHistory.length);
   
   if (tier >= 1) {
+    console.log(`[DEBUG] 🚀 Autorizando minteo Nivel ${tier} para ${userAddress}`);
     const mintResult = await mintNftOnChain(userAddress, tier);
-    if (mintResult.success) return res.json({ txHash: mintResult.hash, status: "minted" });
+    
+    if (mintResult.success) {
+      return res.json({ txHash: mintResult.hash, status: "minted" });
+    } else {
+      return res.status(500).json({ message: "Error firmando transacción en Soroban", status: "failed" });
+    }
   }
-  res.json({ message: "Nivel insuficiente", status: "pending" });
+  
+  res.json({ message: "Reputación insuficiente para este nivel", status: "pending" });
 });
 
 app.listen(PORT, '0.0.0.0', () => { 
-  console.log(`\n🚀 SERVIDOR VÍNCULO ACTIVO EN PUERTO ${PORT} (Accesible en red local)`);
+  console.log(`\n🚀 SERVIDOR VÍNCULO ACTIVO EN PUERTO ${PORT}`);
 });

@@ -1,31 +1,31 @@
 import { useState } from "react";
-import { ArrowLeft, ChevronDown, MessageCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronDown, MessageCircle, ExternalLink, ShieldCheck, Globe } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const faqs = [
   {
     q: "¿Qué es Vyn?",
-    a: "Vyn es una plataforma que te ayuda a construir historial financiero ahorrando pequeñas cantidades semanales en la red Stellar. Al demostrar constancia, desbloqueas acceso a microcréditos.",
+    a: "Vyn (Vínculo) es una plataforma DeFi que construye tu identidad financiera en la blockchain. Al ahorrar en nuestro contrato inteligente, generas un puntaje de reputación que te permite acceder a microcréditos sin burocracia tradicional.",
   },
   {
-    q: "¿Cómo funciona el ahorro?",
-    a: "Cada semana depositas una cantidad de XLM (mínimo 25). Después de 3 depósitos consecutivos alcanzas Nivel Plata y desbloqueas tu primer crédito.",
+    q: "¿Cómo subo de nivel?",
+    a: "Tu nivel (Bronce, Plata, Oro...) depende de tu Puntaje de Reputación. Este se calcula mediante un algoritmo que premia la constancia de tus depósitos y el tiempo que mantienes tus fondos en el contrato. A mayor puntaje, mayor límite de crédito.",
   },
   {
-    q: "¿Qué es XLM?",
-    a: "XLM (Lumens) es la criptomoneda de la red Stellar. Es rápida, barata y accesible para enviar dinero a cualquier parte del mundo.",
+    q: "¿Qué son los niveles NFT?",
+    a: "Cada nivel es un Soulbound Token (SBT). Es un NFT especial vinculado a tu wallet que no se puede transferir ni vender. Es tu 'medalla' de buen pagador y ahorrador en la red Stellar.",
   },
   {
-    q: "¿Qué es Freighter?",
-    a: "Freighter es una extensión de navegador que funciona como tu billetera digital en la red Stellar. La necesitas para conectar tu wallet y hacer depósitos. Descárgala en freighter.app",
+    q: "¿En qué red opera Vyn?",
+    a: "Actualmente operamos en Stellar Testnet (Red de Pruebas). Esto permite que pruebes todas las funcionalidades sin usar dinero real mientras terminamos la fase de auditoría.",
   },
   {
-    q: "¿Cómo desbloqueo el crédito?",
-    a: "Realiza 3 depósitos semanales consecutivos para alcanzar Nivel Plata. Una vez desbloqueado, puedes retirar hasta 300 XLM de crédito directamente a tu wallet.",
+    q: "¿Cómo retiro mi crédito?",
+    a: "Una vez alcances el Nivel Plata (50 pts de reputación), la opción de 'Retirar Crédito' se habilitará automáticamente en tu perfil. El monto se enviará directo a tu wallet Freighter.",
   },
   {
-    q: "¿Es seguro?",
-    a: "Sí. Tus fondos están en la blockchain de Stellar y solo tú tienes acceso a tu wallet mediante Freighter. Vyn nunca tiene acceso a tus claves privadas.",
+    q: "¿Mis fondos están seguros?",
+    a: "Absolutamente. Vyn utiliza Smart Contracts en Soroban (Stellar). Los fondos están bloqueados bajo reglas criptográficas que solo tú controlas con tu firma digital en Freighter.",
   },
 ];
 
@@ -34,98 +34,116 @@ const Ayuda = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <div className="min-h-screen bg-background pb-8">
+    <div className="min-h-screen bg-background pb-24 font-nunito">
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 flex items-center gap-3">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center active:scale-90 transition-all"
         >
-          <ArrowLeft className="w-4.5 h-4.5 text-foreground" />
+          <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
         <h1 className="text-xl font-bold text-foreground tracking-tight">Centro de Ayuda</h1>
       </header>
 
       <main className="px-5 max-w-md mx-auto space-y-5">
-        {/* Quick help */}
-        <div className="card-elevated p-5 opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
-          <p className="text-sm font-bold text-foreground mb-1">¿Necesitas ayuda?</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            Revisa las preguntas frecuentes o contáctanos directamente.
-          </p>
-          <a
-            href="mailto:soporte@vyn.app"
-            className="flex items-center gap-2 text-sm font-semibold text-primary hover:underline active:scale-[0.97] transition-transform"
-          >
-            <MessageCircle className="w-4 h-4" />
-            Contactar soporte
-          </a>
+        {/* Contact Support Card */}
+        <div className="card-elevated p-5 bg-primary/5 border border-primary/10 opacity-0 animate-fade-up">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <MessageCircle className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground mb-1">¿Tienes dudas técnicas?</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Si tienes problemas con Freighter o con tus transacciones, escríbenos.
+              </p>
+              <a
+                href="mailto:soporte@vyn.app"
+                className="inline-flex items-center gap-2 text-xs font-bold text-primary px-3 py-2 bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+              >
+                soporte@vyn.app
+              </a>
+            </div>
+          </div>
         </div>
 
-        {/* FAQ */}
-        <div className="opacity-0 animate-fade-up" style={{ animationDelay: "100ms", animationFillMode: "forwards" }}>
-          <p className="text-xs font-bold tracking-wide uppercase text-muted-foreground mb-3 px-1">
-            Preguntas frecuentes
+        {/* FAQ Section */}
+        <div className="opacity-0 animate-fade-up" style={{ animationDelay: "100ms" }}>
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-3 px-1">
+            Preguntas Frecuentes
           </p>
-          <div className="card-elevated divide-y divide-border">
+          <div className="card-elevated divide-y divide-border overflow-hidden">
             {faqs.map((faq, i) => {
               const isOpen = openIndex === i;
               return (
-                <button
-                  key={i}
-                  onClick={() => setOpenIndex(isOpen ? null : i)}
-                  className="w-full text-left px-5 py-4 active:bg-secondary/30 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-foreground">{faq.q}</p>
+                <div key={i} className="group">
+                  <button
+                    onClick={() => setOpenIndex(isOpen ? null : i)}
+                    className="w-full text-left px-5 py-4 flex items-center justify-between gap-3 hover:bg-secondary/30 transition-colors"
+                  >
+                    <p className="text-sm font-bold text-foreground pr-4 leading-snug">{faq.q}</p>
                     <ChevronDown
-                      className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform duration-300 ${
-                        isOpen ? "rotate-180" : ""
+                      className={`w-4 h-4 text-muted-foreground transition-transform duration-500 ${
+                        isOpen ? "rotate-180 text-primary" : ""
                       }`}
                     />
-                  </div>
+                  </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ${
-                      isOpen ? "max-h-40 mt-2 opacity-100" : "max-h-0 opacity-0"
+                    className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                      isOpen ? "max-h-60 bg-secondary/20" : "max-h-0"
                     }`}
                   >
-                    <p className="text-xs text-muted-foreground leading-relaxed">{faq.a}</p>
+                    <div className="px-5 pb-5 pt-1">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {faq.a}
+                      </p>
+                    </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
         </div>
 
-        {/* External links */}
-        <div className="opacity-0 animate-fade-up" style={{ animationDelay: "200ms", animationFillMode: "forwards" }}>
-          <p className="text-xs font-bold tracking-wide uppercase text-muted-foreground mb-3 px-1">
-            Recursos
+        {/* Resources Section */}
+        <div className="opacity-0 animate-fade-up" style={{ animationDelay: "200ms" }}>
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-muted-foreground mb-3 px-1">
+            Recursos de la Red
           </p>
           <div className="card-elevated divide-y divide-border">
+            <a
+              href="https://stellar.expert/explorer/testnet/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-5 py-4 hover:bg-secondary/50 transition-colors group"
+            >
+              <Globe className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-foreground">Stellar Expert</p>
+                <p className="text-[10px] text-muted-foreground">Explorador de la Testnet</p>
+              </div>
+              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground/50" />
+            </a>
+            
             <a
               href="https://www.freighter.app/"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 px-5 py-3.5 active:bg-secondary/50 transition-colors"
+              className="flex items-center gap-3 px-5 py-4 hover:bg-secondary/50 transition-colors group"
             >
-              <span className="text-lg">🔗</span>
-              <span className="flex-1 text-sm font-medium text-foreground">Descargar Freighter</span>
-              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-            </a>
-            <a
-              href="https://stellar.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-5 py-3.5 active:bg-secondary/50 transition-colors"
-            >
-              <span className="text-lg">⭐</span>
-              <span className="flex-1 text-sm font-medium text-foreground">Sobre Stellar Network</span>
-              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+              <ShieldCheck className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-foreground">Freighter Wallet</p>
+                <p className="text-[10px] text-muted-foreground">Centro de ayuda oficial</p>
+              </div>
+              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground/50" />
             </a>
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground pt-2">Vyn v1.0 · Stellar Network</p>
+        <p className="text-center text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest pt-4">
+          Protocolo Vyn · Descentralizado
+        </p>
       </main>
     </div>
   );

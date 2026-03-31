@@ -1,19 +1,4 @@
-import { 
-  Keypair, 
-  rpc, 
-  TransactionBuilder, 
-  Networks, 
-  Operation, 
-  BASE_FEE, 
-  nativeToScVal, 
-  scValToNative 
-} from "@stellar/stellar-sdk";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const RPC_URL = "https://soroban-testnet.stellar.org";
-const server = new rpc.Server(RPC_URL);
+import { Keypair, rpc, TransactionBuilder, Networks, Operation, BASE_FEE, nativeToScVal, scValToNative } from "@stellar/stellar-sdk";
 
 const CREDIT_LIMITS = {
   0: { name: "Bronce", amount: 0 },
@@ -23,28 +8,31 @@ const CREDIT_LIMITS = {
   4: { name: "Platino", amount: 5000 }
 };
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+const RPC_URL = "https://soroban-testnet.stellar.org";
 
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  
   const { userAddress } = req.body;
   if (!userAddress) return res.status(400).json({ error: "Falta wallet" });
 
   try {
-    console.log(`[DEBUG] 🔍 Consultando Tier para: ${userAddress}`);
-
-    // 1. Cargamos una cuenta temporal para la simulación
+    const server = new rpc.Server(RPC_URL);
     const adminKeypair = Keypair.fromSecret(process.env.SECRET_KEY_ADMIN);
     const sourceAccount = await server.getAccount(adminKeypair.publicKey());
 
-    // 2. Creamos la transacción de "lectura"
     const tx = new TransactionBuilder(sourceAccount, { 
       fee: BASE_FEE, 
       networkPassphrase: Networks.TESTNET 
     })
     .addOperation(
-      Operation.invokeContractFunction({ // ✅ Nombre estándar
+      Operation.invokeContractFunction({
         contract: process.env.NFT_CONTRACT_ID,
         function: "get_tier",
         args: [nativeToScVal(userAddress, { type: "address" })]
@@ -53,7 +41,6 @@ export default async function handler(req, res) {
     .setTimeout(30)
     .build();
 
-    // 3. Simulamos la transacción para obtener el valor de retorno
     const simulation = await server.simulateTransaction(tx);
 
     let finalTier = 0;
@@ -62,9 +49,8 @@ export default async function handler(req, res) {
     }
 
     const config = CREDIT_LIMITS[finalTier] || CREDIT_LIMITS[0];
-    console.log(`[DEBUG] ✅ Tier: ${finalTier} (${config.name})`);
-
-    return res.json({
+    
+    return res.status(200).json({
       success: true,
       tier: finalTier,
       tierName: config.name,
@@ -73,7 +59,13 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error(`[DEBUG] 💥 Error en /get-available-credit:`, error.message);
-    res.status(500).json({ error: error.message });
+    console.error("Error get-available-credit:", error.message);
+    return res.status(200).json({
+      success: true,
+      tier: 0,
+      tierName: "Bronce",
+      availableCredit: 0,
+      currency: "XLM"
+    });
   }
 }

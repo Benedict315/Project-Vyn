@@ -1,8 +1,8 @@
 import { Lock, Sparkles, ArrowDownToLine, Loader2, Activity, ArrowUpFromLine, CalendarClock, TrendingUp, AlertCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { useWallet } from "@/hooks/useWallet";
 import { useState, useEffect } from "react";
 import confetti from "canvas-confetti";
-import { supabase } from "@/integrations/supabase/client";
 
 // 🚀 IMPORTACIONES WEB3
 import { 
@@ -19,7 +19,8 @@ import { requestAccess, signTransaction } from "@stellar/freighter-api";
 const LENDING_CONTRACT_ID = "CDNF6NGNB7RG7QLZYPMWROVSV3VRVWX2FRZQTNT3Y2GRBNWJP3GEBONV"; 
 
 const CreditSection = () => {
-  const { creditWithdrawn, withdrawCredit, deposits } = useApp(); 
+  const { creditWithdrawn, withdrawCredit, deposits } = useApp();
+  const { wallet } = useWallet();
   const [loadingTx, setLoadingTx] = useState(false); 
   const [loadingCredit, setLoadingCredit] = useState(true);
   
@@ -43,42 +44,34 @@ const CreditSection = () => {
   // 💰 CÁLCULO DEL TOTAL A PAGAR (Principal + 5% de Interés)
   const totalToPay = creditData.limit * 1.05;
 
-  // 📡 Sincronización con el Backend/Soroban y Supabase
+  // 📡 Sincronización con el Backend/Soroban usando wallet de localStorage
   useEffect(() => {
     let isMounted = true;
 
     const fetchBlockchainCredit = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!wallet) return;
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("wallet_address")
-          .eq("user_id", user.id)
-          .single();
+        // Guardamos la wallet real del usuario
+        setRegisteredWallet(wallet);
 
-        if (profile?.wallet_address) {
-          // Guardamos la wallet real del usuario
-          setRegisteredWallet(profile.wallet_address);
-
-          const response = await fetch(`/api/get-available-credit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userAddress: profile.wallet_address })
+        const response = await fetch(`/api/get-available-credit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userAddress: wallet })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && isMounted) {
+          setCreditData({
+            limit: data.availableCredit, 
+            tierName: data.tierName,
+            tier: data.tier,
+            isUnlocked: data.tier >= 1 
           });
-          
-          const data = await response.json();
-          
-          if (data.success && isMounted) {
-            setCreditData({
-              limit: data.availableCredit, 
-              tierName: data.tierName,
-              tier: data.tier,
-              isUnlocked: data.tier >= 1 
-            });
-          }
         }
+        
       } catch (error) {
         console.error("Error cargando crédito on-chain:", error);
       } finally {

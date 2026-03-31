@@ -21,6 +21,29 @@ import NotFound from "./pages/NotFound.tsx";
 const queryClient = new QueryClient();
 
 const isOnboarded = () => localStorage.getItem("vinculo_onboarded") === "1";
+const hasWallet = () => !!localStorage.getItem("vinculo_wallet");
+
+const RequireWallet = ({ children }: { children: React.ReactNode }) => {
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const savedWallet = localStorage.getItem("vinculo_wallet");
+    setWallet(savedWallet);
+    setLoading(false);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!wallet) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
 
 const WalletGate = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
@@ -65,35 +88,32 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 const RequireOnboarding = ({ children }: { children: React.ReactNode }) =>
   isOnboarded() ? <>{children}</> : <Navigate to="/bienvenida" replace />;
 
-const PublicOnly = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  if (user) return <Navigate to="/" replace />;
-  return <>{children}</>;
-};
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <AuthProvider>
-        <AppProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+      <AppProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
             <Routes>
-              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-              <Route path="/bienvenida" element={<RequireAuth>{isOnboarded() ? <Navigate to="/" replace /> : <Onboarding />}</RequireAuth>} />
-              <Route path="/" element={<RequireAuth><RequireOnboarding><Index /></RequireOnboarding></RequireAuth>} />
-              <Route path="/historial" element={<RequireAuth><RequireOnboarding><Historial /></RequireOnboarding></RequireAuth>} />
-              <Route path="/perfil" element={<RequireAuth><RequireOnboarding><Perfil /></RequireOnboarding></RequireAuth>} />
-              <Route path="/retiros" element={<RequireAuth><RequireOnboarding><Retiros /></RequireOnboarding></RequireAuth>} />
-              <Route path="/notificaciones" element={<RequireAuth><RequireOnboarding><Notificaciones /></RequireOnboarding></RequireAuth>} />
-              <Route path="/ayuda" element={<RequireAuth><RequireOnboarding><Ayuda /></RequireOnboarding></RequireAuth>} />
+              {/* Login - sin RequireWallet, completamente público */}
+              <Route path="/login" element={<Login />} />
+              
+              {/* Rutas protegidas por wallet */}
+              <Route path="/bienvenida" element={<RequireWallet>{isOnboarded() ? <Navigate to="/" replace /> : <Onboarding />}</RequireWallet>} />
+              <Route path="/" element={<RequireWallet><RequireOnboarding><Index /></RequireOnboarding></RequireWallet>} />
+              <Route path="/historial" element={<RequireWallet><RequireOnboarding><Historial /></RequireOnboarding></RequireWallet>} />
+              <Route path="/perfil" element={<RequireWallet><RequireOnboarding><Perfil /></RequireOnboarding></RequireWallet>} />
+              <Route path="/retiros" element={<RequireWallet><RequireOnboarding><Retiros /></RequireOnboarding></RequireWallet>} />
+              <Route path="/notificaciones" element={<RequireWallet><RequireOnboarding><Notificaciones /></RequireOnboarding></RequireWallet>} />
+              <Route path="/ayuda" element={<RequireWallet><RequireOnboarding><Ayuda /></RequireOnboarding></RequireWallet>} />
+              
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </BrowserRouter>
-        </AppProvider>
-      </AuthProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </AppProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

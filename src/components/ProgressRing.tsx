@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { useApp } from "@/context/AppContext";
+import React, { useState, useEffect, useCallback } from "react";
+import { useWallet } from "@/hooks/useWallet";
+import { fetchContractBalance } from "../stellar/queries";
 import { Shield, Star, Crown, Gem, Trophy, Activity, Loader2, ArrowRight } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom"; // IMPORTANTE: Importamos useNavigate
+import { useNavigate } from "react-router-dom";
 
 interface Level {
   name: string;
@@ -11,15 +11,15 @@ interface Level {
   minScore: number;
   color: string;
   creditAmount?: number;
-  minDeposits?: number;
 }
 
+// Niveles sincronizados con tu Backend (api/get-available-credit)
 const LEVELS: Level[] = [
-  { name: "Bronce", emoji: "🥉", icon: Shield, minScore: 0, color: "var(--sky)", creditAmount: 50, minDeposits: 0 },
-  { name: "Plata", emoji: "🥈", icon: Star, minScore: 50, color: "var(--sky)", creditAmount: 150, minDeposits: 3 },
-  { name: "Oro", emoji: "🥇", icon: Crown, minScore: 150, color: "var(--deep)", creditAmount: 500, minDeposits: 5 },
-  { name: "Diamante", emoji: "💎", icon: Gem, minScore: 500, color: "var(--grape)", creditAmount: 1000, minDeposits: 10 },
-  { name: "Élite", emoji: "🏆", icon: Trophy, minScore: 1000, color: "var(--grape)", creditAmount: 2000, minDeposits: 20 },
+  { name: "Bronce", emoji: "🥉", icon: Shield, minScore: 0, color: "var(--sky)" },
+  { name: "Plata", emoji: "🥈", icon: Star, minScore: 50, color: "var(--sky)" },
+  { name: "Oro", emoji: "🥇", icon: Crown, minScore: 150, color: "var(--deep)" },
+  { name: "Diamante", emoji: "💎", icon: Gem, minScore: 500, color: "var(--grape)" },
+  { name: "Platino", emoji: "🏆", icon: Trophy, minScore: 1000, color: "var(--grape)" },
 ];
 
 export function getCurrentLevel(score: number): Level {
@@ -39,89 +39,80 @@ export function getNextLevel(score: number): Level | null {
 
 const ProgressRing = () => {
   const navigate = useNavigate();
-  const { deposits } = useApp();
+  const { wallet: walletAddress } = useWallet();
+
   const [riskScore, setRiskScore] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // 🚀 NUEVOS ESTADOS PARA COMPARAR
   const [onChainTier, setOnChainTier] = useState(0); 
   const [needsMinting, setNeedsMinting] = useState(false);
   const [levelToMint, setLevelToMint] = useState<Level | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  // 1. Función de carga envuelta en useCallback para evitar bucles infinitos
+  const refreshData = useCallback(async (isInitial = false) => {
+    if (!walletAddress) {
+      if (isInitial) setIsLoading(false);
+      return;
+    }
 
-    const fetchRiskScore = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+    if (isInitial) setIsLoading(true);
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("wallet_address")
-          .eq("user_id", user.id)
-          .single();
+    try {
+      // Obtenemos el saldo real del contrato inteligente
+      const balance = await fetchContractBalance(walletAddress);
 
-        const wallet = profile?.wallet_address;
-        if (!wallet) return;
+      // Consultamos Tier actual (on-chain) y Score calculado (backend)
+      const [onChainRes, scoreRes] = await Promise.all([
+        fetch(`/api/get-available-credit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userAddress: walletAddress })
+        }),
+        fetch(`/api/calculate-score`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: walletAddress, totalDeposited: Number(balance) })
+        })
+      ]);
 
-        const [onChainRes, scoreRes] = await Promise.all([
-          fetch(`/api/get-available-credit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userAddress: wallet })
-          }),
-          fetch(`/api/calculate-score`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address: wallet, deposits: deposits })
-          })
-        ]);
+      const onChainData = await onChainRes.json();
+      const scoreData = await scoreRes.json();
 
-        const onChainData = await onChainRes.json();
-        const scoreData = await scoreRes.json();
+      // Mapeo de seguridad para que la barra nunca baje si ya tiene un NFT
+      const tierToScore: Record<number, number> = { 0: 0, 1: 50, 2: 150, 3: 500, 4: 1000 };
+      const blockchainTier = onChainData.tier || 0;
+      const baseScoreFromNFT = tierToScore[blockchainTier] || 0;
+      const dynamicScore = scoreData.score || 0;
 
-        if (!isMounted) return;
+      const finalScore = Math.max(baseScoreFromNFT, dynamicScore);
+      
+      setRiskScore(finalScore);
+      setOnChainTier(blockchainTier);
 
-        // Mapeamos el Nivel del contrato a su puntaje base correspondiente
-        const tierToScore: Record<number, number> = {
-          0: 0, 1: 50, 2: 150, 3: 500, 4: 1000
-        };
-
-        const blockchainTier = onChainData.tier || 0;
-        const baseScoreFromNFT = tierToScore[blockchainTier] || 0;
-        const dynamicScore = scoreData.score || 0;
-
-        // Definimos el score más alto que se mostrará en pantalla
-        const finalScore = Math.max(baseScoreFromNFT, dynamicScore);
-        
-        setRiskScore(finalScore);
-        setOnChainTier(blockchainTier);
-
-        // 🚀 LÓGICA DE ACTUALIZACIÓN DE SBT
-        // Calculamos qué nivel de NFT DEBERÍA tener según su dynamicScore
-        const calculatedTier = scoreData.tier || 0;
-        
-        // Si el nivel que merece (calculatedTier) es mayor al que tiene minteado (blockchainTier), necesita mintear
-        if (calculatedTier > blockchainTier && calculatedTier >= 1) {
-          setNeedsMinting(true);
-          // Buscamos la info visual de ese nivel para el botón
-          setLevelToMint(LEVELS[calculatedTier] || LEVELS[1]);
-        } else {
-          setNeedsMinting(false);
-        }
-
-      } catch (error) {
-        console.error("❌ Error sincronizando ProgressRing:", error);
-      } finally {
-        if (isMounted) setIsLoading(false);
+      // Verificamos si merece un ascenso
+      const calculatedTier = scoreData.tier || 0;
+      if (calculatedTier > blockchainTier && calculatedTier >= 1) {
+        setNeedsMinting(true);
+        setLevelToMint(LEVELS[calculatedTier] || LEVELS[1]);
+      } else {
+        setNeedsMinting(false);
       }
-    };
+    } catch (error) {
+      console.error("❌ Error actualizando reputación:", error);
+    } finally {
+      if (isInitial) setIsLoading(false);
+    }
+  }, [walletAddress]);
 
-    fetchRiskScore();
-    
-    return () => { isMounted = false; };
-  }, [deposits]);
+  // 2. Efecto de Polling: Se dispara al inicio y cada 15 segundos
+  useEffect(() => {
+    refreshData(true);
+
+    const interval = setInterval(() => {
+      refreshData(false); // Refresco silencioso (sin spinner)
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [refreshData]);
 
   const current = getCurrentLevel(riskScore);
   const next = getNextLevel(riskScore);
@@ -139,6 +130,16 @@ const ProgressRing = () => {
     return (
       <div className="card-elevated p-5 flex items-center justify-center min-h-[140px]">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!walletAddress) {
+    return (
+      <div className="card-elevated p-5 flex flex-col items-center justify-center min-h-[140px] text-center gap-2 opacity-70">
+        <Shield className="w-8 h-8 text-muted-foreground mb-1" />
+        <p className="text-sm font-bold text-foreground">Reputación Vínculo</p>
+        <p className="text-xs text-muted-foreground">Conecta tu wallet para ver tu nivel</p>
       </div>
     );
   }
@@ -183,13 +184,13 @@ const ProgressRing = () => {
           </div>
 
           <div className="flex gap-1.5 mt-3">
-            {LEVELS.map((lvl) => {
-              const achieved = riskScore >= lvl.minScore;
+            {LEVELS.map((lvl, index) => {
+              const isAchieved = index <= onChainTier;
               return (
                 <span
                   key={lvl.name}
                   className={`text-xs px-2 py-0.5 rounded-full font-semibold transition-all duration-500 ${
-                    achieved ? "bg-primary/15 text-primary scale-110" : "bg-secondary text-muted-foreground/50 grayscale"
+                    isAchieved ? "bg-primary/15 text-primary scale-110" : "bg-secondary text-muted-foreground/30 grayscale"
                   }`}
                 >
                   {lvl.emoji}
@@ -200,12 +201,11 @@ const ProgressRing = () => {
         </div>
       </div>
 
-      {/* 🚀 BOTÓN DE RECLAMO (Solo aparece si el score merece un NFT mayor al que tiene) */}
       {needsMinting && levelToMint && (
         <div className="mt-2 pt-3 border-t border-border/50 animate-fade-in">
           <button 
-            onClick={() => navigate('/perfil')} // Asume que la ruta de Perfil es /perfil
-            className="w-full flex items-center justify-between bg-primary/10 hover:bg-primary/20 text-primary px-4 py-3 rounded-xl transition-colors font-semibold text-sm group"
+            onClick={() => navigate('/perfil')} 
+            className="w-full flex items-center justify-between bg-primary/10 hover:bg-primary/20 text-primary px-4 py-3 rounded-xl transition-all font-semibold text-sm group active:scale-95"
           >
             <div className="flex items-center gap-2">
               <span className="text-base">{levelToMint.emoji}</span>

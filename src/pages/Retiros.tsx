@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowDownToLine, Fingerprint, CheckCircle2, AlertCircle, ExternalLink,
-  X, Wallet, Calendar, Lock, TrendingUp, Clock, Sparkles, Unlock
+  ArrowDownToLine, Fingerprint, CheckCircle2,
+  X, Lock, TrendingUp, Clock, Sparkles, Unlock
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
@@ -21,7 +21,7 @@ const STAKING_OPTIONS = [
 ];
 
 const Retiros = () => {
-  const { withdrawals, addWithdrawal } = useApp();
+  const { addWithdrawal } = useApp();
   
   const [realBalance, setRealBalance] = useState<number>(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -31,12 +31,13 @@ const Retiros = () => {
   const [timeLeftStr, setTimeLeftStr] = useState<string>("");
   const [canUnstake, setCanUnstake] = useState(false);
 
+  // Modal de Retiro Normal
   const [modalOpen, setModalOpen] = useState(false);
   const [amount, setAmount] = useState("25");
   const [step, setStep] = useState<"input" | "signing" | "success" | "error">("input");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState("");
 
+  // Modal de Staking / Unstaking
   const [stakeModalOpen, setStakeModalOpen] = useState(false);
   const [stakeAmount, setStakeAmount] = useState("50");
   const [selectedMonths, setSelectedMonths] = useState(3);
@@ -96,7 +97,7 @@ const Retiros = () => {
   }, [onChainStake]);
 
   const handleClose = () => {
-    setStep("input"); setAmount("25"); setErrorMsg(""); setTxHash("");
+    setStep("input"); setAmount("25"); setErrorMsg("");
     setModalOpen(false);
     if (walletAddress) loadData(walletAddress);
   };
@@ -104,6 +105,7 @@ const Retiros = () => {
   const handleStakeClose = () => {
     setStakeStep("input"); setStakeAmount("50"); setSelectedMonths(3);
     setStakeModalOpen(false);
+    if (walletAddress) loadData(walletAddress);
   };
 
   const processContractCall = async (functionName: string, args: any[], successStep: any) => {
@@ -139,12 +141,14 @@ const Retiros = () => {
 
       if (txStatus === "SUCCESS") {
         if (walletAddress) loadData(walletAddress);
-        setStakeStep(successStep);
+        
         if (functionName === "withdraw") {
-          setTxHash(submitRes.hash);
           addWithdrawal(parseFloat(amount), submitRes.hash);
           setStep("success");
+        } else {
+          setStakeStep(successStep);
         }
+        
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.65 } });
       } else {
         throw new Error("Transacción fallida en el contrato");
@@ -152,7 +156,7 @@ const Retiros = () => {
     } catch (err: any) {
       console.error(err);
       if (functionName === "withdraw") { setErrorMsg(err.message); setStep("error"); }
-      else { alert(err.message); setStakeStep("input"); }
+      else { alert(err.message); setStakeStep("input"); setStakeModalOpen(false); }
     }
   };
 
@@ -181,16 +185,14 @@ const Retiros = () => {
 
   const handleUnstake = async () => {
     setStakeStep("unstaking");
+    setStakeModalOpen(true);
     await processContractCall("unstake", [nativeToScVal(walletAddress, { type: "address" })], "success");
   };
 
-  const selectedOption = STAKING_OPTIONS.find((o) => o.months === selectedMonths)!;
-  const stakeVal = parseFloat(stakeAmount) || 0;
-  const estimatedReturn = stakeVal + stakeVal * (selectedOption.apy / 100) * (selectedMonths / 12);
   const earnedInterest = onChainStake.amount > 0 ? (onChainStake.amount * (onChainStake.apy / 100) * (onChainStake.months / 12)) : 0;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 font-nunito">
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 flex items-center gap-3">
         <img src={logoVin} alt="Vyn" className="w-7 h-7 object-contain" />
         <div>
@@ -213,12 +215,16 @@ const Retiros = () => {
 
         {/* STAKING SECTION */}
         <div className="animate-fade-up" style={{ animationDelay: "80ms" }}>
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 px-1">
             <Lock className="w-4 h-4 text-accent" />
             <h2 className="text-sm font-bold text-foreground">Staking</h2>
           </div>
 
-          <button onClick={() => { setStakeStep("input"); setStakeModalOpen(true); }} className="card-elevated p-5 w-full flex items-center justify-between hover:ring-2 hover:ring-primary/30 active:scale-[0.97] transition-all group mb-3">
+          <button 
+            onClick={() => { setStakeStep("input"); setStakeModalOpen(true); }} 
+            disabled={onChainStake.amount > 0} 
+            className={`card-elevated p-5 w-full flex items-center justify-between hover:ring-2 hover:ring-primary/30 active:scale-[0.97] transition-all group mb-3 ${onChainStake.amount > 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-accent" />
@@ -231,18 +237,17 @@ const Retiros = () => {
             <Sparkles className="w-5 h-5 text-accent opacity-60 group-hover:opacity-100 transition-opacity" />
           </button>
 
-          {/* ACTIVE POSITION ON CHAIN */}
           {onChainStake.amount > 0 ? (
-            <div className="card-elevated divide-y divide-border">
+            <div className="card-elevated divide-y divide-border border border-accent/20 shadow-lg shadow-accent/5">
               <div className="px-4 py-3 flex items-center justify-between bg-accent/5 rounded-t-xl">
                 <span className="text-xs font-semibold text-accent uppercase tracking-wide">Posición Activa</span>
-                <span className="text-xs font-bold text-accent">{onChainStake.amount} XLM</span>
+                <span className="text-xs font-bold text-accent">{onChainStake.amount.toFixed(2)} XLM</span>
               </div>
               <div className="px-4 py-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                      <Lock className="w-4 h-4 text-accent" />
+                      {canUnstake ? <Unlock className="w-4 h-4 text-emerald-500" /> : <Lock className="w-4 h-4 text-accent" />}
                     </div>
                     <div>
                       <p className="text-sm font-bold text-foreground">Bloqueado a {onChainStake.months} mes(es)</p>
@@ -251,28 +256,30 @@ const Retiros = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-emerald-500">+{earnedInterest.toFixed(2)} XLM</p>
-                    <p className="text-xs text-muted-foreground">Ganancia</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Ganancia</p>
                   </div>
                 </div>
                 
                 <button 
                   onClick={handleUnstake}
                   disabled={!canUnstake || stakeStep === "unstaking"}
-                  className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-                    canUnstake ? "bg-accent text-white shadow-md hover:bg-accent/90" : "bg-secondary text-muted-foreground cursor-not-allowed"
+                  className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                    canUnstake 
+                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95" 
+                      : "bg-secondary text-muted-foreground cursor-not-allowed"
                   }`}
                 >
-                  {stakeStep === "unstaking" ? "Procesando..." : canUnstake ? <><Unlock className="w-4 h-4"/> Retirar Inversión</> : <><Clock className="w-4 h-4"/> {timeLeftStr}</>}
+                  {canUnstake ? <><Unlock className="w-4 h-4"/> Retirar Inversión</> : <><Clock className="w-4 h-4"/> {timeLeftStr}</>}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="card-elevated p-5 flex flex-col items-center text-center">
-              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-2">
+            <div className="card-elevated p-6 flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-3">
                 <Lock className="w-5 h-5 text-accent" />
               </div>
-              <p className="text-xs font-bold text-foreground mb-0.5">Sin posiciones de staking</p>
-              <p className="text-[10px] text-muted-foreground">Elige un plazo arriba para empezar a generar rendimientos</p>
+              <p className="text-sm font-bold text-foreground mb-1">Sin posiciones de staking</p>
+              <p className="text-xs text-muted-foreground">Elige un plazo arriba para empezar a generar rendimientos</p>
             </div>
           )}
         </div>
@@ -280,7 +287,7 @@ const Retiros = () => {
 
       <BottomNav />
 
-      {/* MODAL DE DEPOSITOS/RETIROS (Se mantiene igual que la versión anterior) */}
+      {/* MODAL DE RETIROS CON OPCIÓN MÁX */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={step === "signing" ? undefined : handleClose} />
@@ -290,15 +297,40 @@ const Retiros = () => {
             {step === "input" && (
               <>
                 <h2 className="text-xl font-bold text-foreground mb-1">Retirar fondos</h2>
-                <div className="mb-4 mt-6">
+                <p className="text-xs text-muted-foreground mb-6">Indica la cantidad que deseas enviar a tu wallet</p>
+                
+                <div className="mb-4">
                   <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full text-3xl font-bold bg-secondary rounded-xl px-4 py-4 outline-none tabular-nums" />
                 </div>
+
                 <div className="flex gap-2 mb-6">
                   {[10, 25, 50].map((v) => (
-                    <button key={v} onClick={() => setAmount(String(Math.min(v, realBalance)))} className="flex-1 py-2 rounded-lg bg-secondary text-sm font-semibold">{v} XLM</button>
+                    <button 
+                      key={v} 
+                      onClick={() => setAmount(String(Math.min(v, realBalance)))} 
+                      className="flex-1 py-2 rounded-lg bg-secondary text-sm font-semibold hover:bg-secondary/80 transition-colors"
+                    >
+                      {v} XLM
+                    </button>
                   ))}
+                  {/* 🚀 BOTÓN RETIRAR TODO (MÁX) */}
+                  <button 
+                    onClick={() => setAmount(realBalance.toString())} 
+                    className="flex-1 py-2 rounded-lg bg-primary/10 text-primary text-sm font-bold border border-primary/20 hover:bg-primary/20 transition-colors"
+                  >
+                    TODO
+                  </button>
                 </div>
-                <button onClick={handleWithdraw} disabled={!parseFloat(amount) || parseFloat(amount) > realBalance} className="btn-emerald w-full py-4 font-bold disabled:opacity-50">Confirmar Retiro</button>
+
+                {errorMsg && <p className="text-xs text-red-500 font-semibold mb-4 text-center">{errorMsg}</p>}
+                
+                <button 
+                  onClick={handleWithdraw} 
+                  disabled={!parseFloat(amount) || parseFloat(amount) > realBalance} 
+                  className="btn-emerald w-full py-4 font-bold disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  Confirmar Retiro
+                </button>
               </>
             )}
             
@@ -307,41 +339,49 @@ const Retiros = () => {
             )}
             
             {step === "success" && (
-              <div className="flex flex-col items-center py-8"><CheckCircle2 className="w-16 h-16 text-primary mb-4" /><p className="font-bold text-xl">Retiro Exitoso</p><button onClick={handleClose} className="mt-6 w-full bg-primary text-white py-3 rounded-xl font-bold">Listo</button></div>
+              <div className="flex flex-col items-center py-8"><CheckCircle2 className="w-16 h-16 text-emerald-500 mb-4" /><p className="font-bold text-xl">Retiro Exitoso</p><button onClick={handleClose} className="mt-6 w-full btn-emerald py-3 rounded-xl font-bold">Listo</button></div>
             )}
           </div>
         </div>
       )}
 
       {/* MODAL DE STAKING */}
-      {stakeModalOpen && onChainStake.amount === 0 && (
+      {stakeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={handleStakeClose} />
+          <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={stakeStep === "signing" || stakeStep === "unstaking" ? undefined : handleStakeClose} />
           <div className="relative bg-card rounded-t-3xl sm:rounded-2xl w-full max-w-md p-6 pb-8 animate-slide-up z-10">
-            <button onClick={handleStakeClose} className="absolute right-4 top-4 p-2"><X className="w-5 h-5 text-muted-foreground" /></button>
+            {(stakeStep !== "signing" && stakeStep !== "unstaking") && <button onClick={handleStakeClose} className="absolute right-4 top-4 p-2"><X className="w-5 h-5 text-muted-foreground" /></button>}
 
-            {stakeStep === "input" && (
+            {stakeStep === "input" && onChainStake.amount === 0 && (
               <>
                 <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2"><Lock className="w-5 h-5 text-accent"/> Staking</h2>
                 <div className="flex gap-2 mb-5">
                   {STAKING_OPTIONS.map((opt) => (
-                    <button key={opt.months} onClick={() => setSelectedMonths(opt.months)} className={`flex-1 py-2.5 rounded-xl text-center transition-all ${selectedMonths === opt.months ? "bg-accent text-white" : "bg-secondary"}`}>
+                    <button key={opt.months} onClick={() => setSelectedMonths(opt.months)} className={`flex-1 py-2.5 rounded-xl text-center transition-all ${selectedMonths === opt.months ? "bg-accent text-white" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}>
                       <span className="block text-sm font-bold">{opt.label}</span>
-                      <span className="block text-[10px] opacity-80">{opt.apy}% APY</span>
+                      <span className={`block text-[10px] ${selectedMonths === opt.months ? "opacity-80" : "opacity-60"}`}>{opt.apy}% APY</span>
                     </button>
                   ))}
                 </div>
                 <input type="number" value={stakeAmount} onChange={(e) => setStakeAmount(e.target.value)} className="w-full text-3xl font-bold bg-secondary rounded-xl px-4 py-4 mb-4" />
-                <button onClick={handleStakeConfirm} disabled={stakeVal > realBalance || stakeVal <= 0} className="w-full rounded-xl bg-accent text-white py-4 font-bold">Bloquear Fondos</button>
+                <button onClick={handleStakeConfirm} disabled={parseFloat(stakeAmount) > realBalance || parseFloat(stakeAmount) <= 0} className="w-full rounded-xl bg-accent text-white py-4 font-bold active:scale-95 transition-transform disabled:opacity-50">Bloquear Fondos</button>
               </>
             )}
 
             {(stakeStep === "signing" || stakeStep === "unstaking") && (
-              <div className="flex flex-col items-center py-10"><Lock className="w-12 h-12 text-accent animate-pulse mb-4" /><p className="font-bold">Procesando en Soroban...</p></div>
+              <div className="flex flex-col items-center py-10">
+                <Lock className="w-12 h-12 text-accent animate-pulse mb-4" />
+                <p className="font-bold">Procesando en Soroban...</p>
+                <p className="text-xs text-muted-foreground mt-2">Confirma en Freighter</p>
+              </div>
             )}
 
             {stakeStep === "success" && (
-              <div className="flex flex-col items-center py-8"><Sparkles className="w-16 h-16 text-accent mb-4" /><p className="font-bold text-xl">¡Éxito!</p><button onClick={handleStakeClose} className="mt-6 w-full bg-accent text-white py-3 rounded-xl font-bold">Listo</button></div>
+              <div className="flex flex-col items-center py-8">
+                <Sparkles className="w-16 h-16 text-accent mb-4" />
+                <p className="font-bold text-xl">¡Transacción Exitosa!</p>
+                <button onClick={handleStakeClose} className="mt-6 w-full bg-accent text-white py-3 rounded-xl font-bold">Listo</button>
+              </div>
             )}
           </div>
         </div>

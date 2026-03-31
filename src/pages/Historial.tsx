@@ -1,57 +1,113 @@
-import { useApp } from "@/context/AppContext";
-import { ArrowUpRight, PiggyBank, ArrowDownToLine, Calendar } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useWallet } from "@/hooks/useWallet";
+import { ArrowUpRight, ArrowDownLeft, PiggyBank, Calendar, Loader2, ExternalLink } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import logoVin from "@/assets/logo-vin.png";
 
+interface Transaction {
+  id: string;
+  type: "deposit" | "withdrawal";
+  amount: number;
+  label: string;
+  date: Date;
+}
+
 const Historial = () => {
-  const { deposits, creditWithdrawn, creditAmount } = useApp();
+  const { wallet: walletAddress } = useWallet();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const allTransactions = [
-    ...deposits.map((d) => ({
-      id: d.id,
-      type: "deposit" as const,
-      amount: d.amount,
-      label: d.label,
-      date: d.date,
-    })),
-    ...(creditWithdrawn
-      ? [
-          {
-            id: "credit-withdrawal",
-            type: "withdrawal" as const,
-            amount: creditAmount,
-            label: "Retiro de crédito",
-            date: new Date(),
-          },
-        ]
-      : []),
-  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+  useEffect(() => {
+    if (!walletAddress) {
+      setLoading(false);
+      return;
+    }
 
-  const grouped = allTransactions.reduce<Record<string, typeof allTransactions>>((acc, tx) => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${walletAddress}/effects?limit=150&order=desc`);
+        
+        if (!res.ok) throw new Error("Error leyendo Horizon");
+        
+        const data = await res.json();
+
+        const parsedMovements: Transaction[] = data._embedded.records
+          .filter((effect: any) => 
+            (effect.type === "account_debited" || effect.type === "account_credited") &&
+            parseFloat(effect.amount) > 0.05 
+          )
+          .map((effect: any) => {
+            const isDeposit = effect.type === "account_debited";
+            return {
+              id: effect.id,
+              type: isDeposit ? "deposit" : "withdrawal",
+              label: isDeposit ? "Depósito a Vínculo" : "Retiro de Crédito",
+              amount: parseFloat(effect.amount),
+              date: new Date(effect.created_at),
+            };
+          });
+
+        setTransactions(parsedMovements.slice(0, 40));
+
+      } catch (error) {
+        console.error("Error cargando historial general:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistory();
+    
+    const interval = setInterval(fetchHistory, 15000);
+    return () => clearInterval(interval);
+  }, [walletAddress]);
+
+  // Agrupación por mes
+  const grouped = transactions.reduce<Record<string, Transaction[]>>((acc, tx) => {
     const key = tx.date.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
     if (!acc[key]) acc[key] = [];
     acc[key].push(tx);
     return acc;
   }, {});
 
+  // --- 🚀 NUEVOS CÁLCULOS DINÁMICOS PARA EL RESUMEN ---
+  const totalDepositsCount = transactions.filter(tx => tx.type === "deposit").length;
+  const totalSavedVolume = transactions
+    .filter(tx => tx.type === "deposit")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const totalWithdrawalsCount = transactions.filter(tx => tx.type === "withdrawal").length;
+  const totalWithdrawnVolume = transactions
+    .filter(tx => tx.type === "withdrawal")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 font-nunito">
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-4 flex items-center gap-3">
         <img src={logoVin} alt="Vyn" className="w-7 h-7 object-contain" />
         <div>
           <h1 className="text-xl font-bold text-foreground tracking-tight">Historial</h1>
-          <p className="text-xs text-muted-foreground">Todas tus transacciones</p>
+          <p className="text-xs text-muted-foreground">Últimas 40 transacciones en Stellar</p>
         </div>
       </header>
 
       <main className="px-5 max-w-md mx-auto">
-        {allTransactions.length === 0 ? (
+        {loading ? (
+          <div className="card-elevated p-10 flex flex-col items-center justify-center min-h-[250px] opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
+            <Loader2 className="w-8 h-8 animate-spin text-primary/50 mb-4" />
+            <p className="text-sm font-semibold text-foreground">Sincronizando blockchain...</p>
+          </div>
+        ) : transactions.length === 0 ? (
           <div className="card-elevated p-10 flex flex-col items-center text-center opacity-0 animate-fade-up" style={{ animationFillMode: "forwards" }}>
             <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-3">
               <PiggyBank className="w-7 h-7 text-muted-foreground" />
             </div>
-            <p className="text-sm font-semibold text-foreground mb-0.5">Sin transacciones</p>
-            <p className="text-xs text-muted-foreground">Tus depósitos y retiros aparecerán aquí</p>
+            <p className="text-sm font-semibold text-foreground mb-0.5">
+              {walletAddress ? "Sin transacciones" : "Wallet no conectada"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {walletAddress ? "Tus depósitos y retiros aparecerán aquí" : "Conecta Freighter para ver tu historial"}
+            </p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -61,37 +117,53 @@ const Historial = () => {
                 className="opacity-0 animate-fade-up"
                 style={{ animationDelay: `${gi * 100}ms`, animationFillMode: "forwards" }}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground capitalize">{month}</span>
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs font-bold tracking-wide uppercase text-muted-foreground capitalize">{month}</span>
                 </div>
-                <div className="card-elevated divide-y divide-border">
+                
+                <div className="card-elevated divide-y divide-border overflow-hidden">
                   {txs.map((tx) => (
-                    <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5">
+                    <div key={tx.id} className="flex items-center gap-3 px-5 py-4 hover:bg-secondary/30 transition-colors">
+                      {/* Icono */}
                       <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          tx.type === "deposit" ? "bg-primary/10" : "bg-accent/10"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          tx.type === "deposit" ? "bg-primary/10" : "bg-emerald-500/10"
                         }`}
                       >
                         {tx.type === "deposit" ? (
-                          <ArrowUpRight className="w-4 h-4 text-primary" />
+                          <ArrowUpRight className="w-5 h-5 text-primary" />
                         ) : (
-                          <ArrowDownToLine className="w-4 h-4 text-accent" />
+                          <ArrowDownLeft className="w-5 h-5 text-emerald-500" />
                         )}
                       </div>
+                      
+                      {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{tx.label}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-sm font-bold text-foreground truncate">{tx.label}</p>
+                        <p className="text-xs font-medium text-muted-foreground mt-0.5">
                           {tx.date.toLocaleDateString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
-                      <span
-                        className={`text-sm font-semibold tabular-nums ${
-                          tx.type === "deposit" ? "text-primary" : "text-foreground"
-                        }`}
-                      >
-                        {tx.type === "deposit" ? "+" : "-"}{tx.amount} XLM
-                      </span>
+                      
+                      {/* Monto */}
+                      <div className="text-right flex flex-col items-end">
+                        <span
+                          className={`block text-sm font-bold tabular-nums ${
+                            tx.type === "deposit" ? "text-primary" : "text-emerald-500"
+                          }`}
+                        >
+                          {tx.type === "deposit" ? "+" : "-"}{tx.amount.toFixed(2)} XLM
+                        </span>
+                        <a 
+                          href={`https://stellar.expert/explorer/testnet/tx/${tx.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-1 hover:text-foreground transition-colors"
+                        >
+                          RECIBO <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -100,19 +172,41 @@ const Historial = () => {
           </div>
         )}
 
-        {allTransactions.length > 0 && (
-          <div className="card-navy p-5 mt-6 opacity-0 animate-fade-up" style={{ animationDelay: "300ms", animationFillMode: "forwards" }}>
-            <p className="text-xs font-semibold tracking-wide uppercase opacity-60 mb-3">Resumen</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-2xl font-bold tabular-nums">{deposits.length}</p>
-                <p className="text-xs opacity-60">Depósitos</p>
+        {/* --- 🚀 RESUMEN ACTUALIZADO (DEPÓSITOS Y RETIROS) --- */}
+        {transactions.length > 0 && (
+          <div className="card-navy p-6 mt-6 mb-4 opacity-0 animate-fade-up" style={{ animationDelay: "300ms", animationFillMode: "forwards" }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase opacity-60 mb-5 text-center">Resumen del Periodo</p>
+            
+            <div className="space-y-6">
+              {/* Fila 1: Depósitos */}
+              <div className="grid grid-cols-2 gap-4 divide-x divide-white/10">
+                <div className="text-center">
+                  <p className="text-2xl font-extrabold tabular-nums text-white mb-1">{totalDepositsCount}</p>
+                  <p className="text-[10px] font-semibold opacity-60 uppercase tracking-wide">Depósitos</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-extrabold tabular-nums text-white mb-1">
+                    {totalSavedVolume.toFixed(0)} <span className="text-sm font-medium opacity-60 ml-0.5">XLM</span>
+                  </p>
+                  <p className="text-[10px] font-semibold opacity-60 uppercase tracking-wide">Volumen Ingresado</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold tabular-nums">
-                  {deposits.reduce((s, d) => s + d.amount, 0)} <span className="text-sm font-medium opacity-60">XLM</span>
-                </p>
-                <p className="text-xs opacity-60">Total ahorrado</p>
+
+              {/* Separador sutil */}
+              <hr className="border-white/10 mx-4" />
+
+              {/* Fila 2: Retiros */}
+              <div className="grid grid-cols-2 gap-4 divide-x divide-white/10">
+                <div className="text-center">
+                  <p className="text-2xl font-extrabold tabular-nums text-emerald-400 mb-1">{totalWithdrawalsCount}</p>
+                  <p className="text-[10px] font-semibold opacity-60 uppercase tracking-wide">Retiros</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-extrabold tabular-nums text-emerald-400 mb-1">
+                    {totalWithdrawnVolume.toFixed(0)} <span className="text-sm font-medium opacity-60 ml-0.5 text-white">XLM</span>
+                  </p>
+                  <p className="text-[10px] font-semibold opacity-60 uppercase tracking-wide">Volumen Retirado</p>
+                </div>
               </div>
             </div>
           </div>

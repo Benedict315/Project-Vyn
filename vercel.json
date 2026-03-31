@@ -2,21 +2,32 @@
   "version": 2,
   "builds": [
     {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "package.json",
       "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+      "config": { "distDir": "dist" }
     }
   ],
   "routes": [
+    { "src": "^/api/get-available-credit$", "dest": "/api/get-available-credit.js" },
+    { "src": "^/api/calculate-score$", "dest": "/api/calculate-score.js" },
+    { "src": "^/api/evaluate-and-mint$", "dest": "/api/evaluate-and-mint.js" },
+    { "src": "^/api/(.*)$", "dest": "/api/$1.js" },
+    { "handle": "filesystem" },
+    { "src": "^/(.*)$", "dest": "/index.html" }
+  ],
+  "headers": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "script-src 'self' 'unsafe-eval' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-ancestors 'self';"
+        }
+      ]
     }
   ]
 }

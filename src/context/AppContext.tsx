@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { v4 as uuidv4 } from 'uuid';
+
 export interface Deposit {
   id: string;
   amount: number;
   date: Date;
   label: string;
-  daysAgo: number; // 🚀 NUEVO: Necesario para el Motor de Riesgo
+  daysAgo: number;
 }
 
 export interface Withdrawal {
@@ -39,7 +40,7 @@ interface AppState {
 
 interface AppContextType extends AppState {
   addDeposit: (amount: number) => void;
-  simulateWeek: () => void;
+  // -> simulateWeek eliminada
   withdrawCredit: () => void;
   addWithdrawal: (amount: number, txHash: string) => void;
   addStake: (amount: number, months: number) => void;
@@ -82,10 +83,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addDeposit = useCallback((amount: number) => {
     setState((prev) => {
       const newCount = prev.depositsCount + 1;
-      // Ya no tocamos prev.balance aquí, porque Stellar es la fuente de verdad.
+      const unlocked = newCount >= prev.requiredDeposits;
+      const wasLocked = !prev.isUnlocked;
+      
+      if (wasLocked && unlocked) {
+        setTimeout(() => setShowUnlockCelebration(true), 400);
+      }
+
       return {
         ...prev,
         depositsCount: newCount,
+        isUnlocked: unlocked,
         deposits: [
           {
             id: uuidv4(),
@@ -95,41 +103,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             daysAgo: 0,
           },
           ...prev.deposits,
-        ],
-      };
-    });
-  }, []);
-
-  const simulateWeek = useCallback(() => {
-    const amount = 50;
-    setState((prev) => {
-      const newCount = prev.depositsCount + 1;
-      const unlocked = newCount >= prev.requiredDeposits;
-      const wasLocked = !prev.isUnlocked;
-      if (wasLocked && unlocked) {
-        setTimeout(() => setShowUnlockCelebration(true), 400);
-      }
-
-      // 🚀 NUEVO: Envejecemos todos los depósitos anteriores sumándoles 7 días
-      const agedDeposits = prev.deposits.map(dep => ({
-        ...dep,
-        daysAgo: dep.daysAgo + 7
-      }));
-
-      return {
-        ...prev,
-        balance: prev.balance + amount,
-        depositsCount: newCount,
-        isUnlocked: unlocked,
-        deposits: [
-          {
-            id: crypto.randomUUID(),
-            amount,
-            date: new Date(), 
-            label: `Depósito semanal #${newCount}`,
-            daysAgo: 0, // El nuevo depósito entra con 0 días
-          },
-          ...agedDeposits, // Agregamos los que ya envejecieron
         ],
       };
     });
@@ -146,7 +119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balance: Math.max(0, prev.balance - amount),
       withdrawals: [
         {
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           amount,
           date: new Date(),
           txHash,
@@ -166,7 +139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balance: Math.max(0, prev.balance - amount),
       stakes: [
         {
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           amount,
           months,
           apy,
@@ -184,7 +157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         ...state,
         addDeposit,
-        simulateWeek,
+        // -> simulateWeek eliminada del Provider
         withdrawCredit,
         addWithdrawal,
         addStake,
