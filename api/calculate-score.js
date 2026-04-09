@@ -1,8 +1,21 @@
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
+const MIN_TX_REQUIRED = 30;
 
 // --- MOTOR DE REPUTACIÓN CALIBRADO (3000 XLM = 50 PTS) ---
 function computeFinancialReputation(history, totalBalance) {
-  if (history.length === 0) return { score: 0, tier: 0, tierName: "Bronce" };
+  if (history.length < MIN_TX_REQUIRED) {
+    return {
+      score: 0,
+      tier: 0,
+      tierName: "Bronce",
+      eligibility: {
+        minHistoryRequired: MIN_TX_REQUIRED,
+        historyCount: history.length,
+        isHistoryEligible: false,
+        remainingForUnlock: MIN_TX_REQUIRED - history.length,
+      },
+    };
+  }
 
   let totalDeposited = 0;
   let totalWithdrawn = 0;
@@ -52,6 +65,12 @@ function computeFinancialReputation(history, totalBalance) {
     score: parseFloat(score.toFixed(2)), 
     tier, 
     tierName,
+    eligibility: {
+      minHistoryRequired: MIN_TX_REQUIRED,
+      historyCount: history.length,
+      isHistoryEligible: true,
+      remainingForUnlock: 0,
+    },
     metrics: {
       retention: parseFloat(retentionRate.toFixed(2)),
       activity: parseFloat(activityFactor.toFixed(2)),
@@ -61,10 +80,10 @@ function computeFinancialReputation(history, totalBalance) {
   };
 }
 
-// --- LECTOR DE 40 REGISTROS REALES ---
+// --- LECTOR DE 30 REGISTROS REALES ---
 async function getCleanHistory(userAddress) {
   try {
-    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=100&order=desc`);
+    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=120&order=desc`);
     if (!response.ok) return [];
     
     const data = await response.json();
@@ -79,7 +98,7 @@ async function getCleanHistory(userAddress) {
         type: op.type === 'account_debited' ? "deposit" : "withdrawal",
         date: new Date(op.created_at)
       }))
-      .slice(0, 40); // Leemos exactamente los 40 registros que pediste
+      .slice(0, MIN_TX_REQUIRED); // Leemos exactamente las últimas 30 transacciones relevantes
   } catch (e) {
     return [];
   }

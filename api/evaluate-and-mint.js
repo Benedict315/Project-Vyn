@@ -14,40 +14,40 @@ dotenv.config();
 const RPC_URL = "https://soroban-testnet.stellar.org";
 const server = new rpc.Server(RPC_URL);
 
-function weightedMean(deposits = []) {
-  if (!deposits || deposits.length === 0) return 0;
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const { amount, daysAgo } of deposits) {
-    const weight = 1 / (daysAgo + 1);
-    weightedSum += (amount || 0) * weight;
-    totalWeight += weight;
-  }
-  return totalWeight === 0 ? 0 : weightedSum / totalWeight;
+function tierNameFromValue(tier) {
+  if (tier === 4) return "Platino";
+  if (tier === 3) return "Diamante";
+  if (tier === 2) return "Oro";
+  if (tier === 1) return "Plata";
+  return "Bronce";
 }
 
-function meanAbsoluteDeviation(deposits = []) {
-  if (!deposits || deposits.length === 0) return 0;
-  const amounts = deposits.map((d) => d.amount || 0);
-  const mean = amounts.reduce((acc, v) => acc + v, 0) / amounts.length;
-  return amounts.reduce((acc, v) => acc + Math.abs(v - mean), 0) / amounts.length;
-}
+async function resolveTierFromCanonicalScore(req, userAddress, totalVolume) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || "https";
 
-function computeScoreAndTier(wMean, mad, n) {
-  let score = 0;
-  if (wMean > 0 && mad <= wMean) {
-    score = (wMean * (1 - mad / wMean)) * Math.log(n + 1);
+  if (!host) {
+    throw new Error("No se pudo resolver host para validar score");
   }
 
-  let tier = 0;
-  let tierName = "Bronce";
+  const scoreResponse = await fetch(`${proto}://${host}/api/calculate-score`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      address: userAddress,
+      totalDeposited: Number(totalVolume) || 0,
+    }),
+  });
 
-  if (score >= 1000) { tier = 4; tierName = "Platino"; } 
-  else if (score >= 500) { tier = 3; tierName = "Diamante"; } 
-  else if (score >= 150) { tier = 2; tierName = "Oro"; } 
-  else if (score >= 50) { tier = 1; tierName = "Plata"; }
+  if (!scoreResponse.ok) {
+    throw new Error("No se pudo validar score para mintear");
+  }
 
-  return { score: parseFloat(score.toFixed(4)), tier, tierName };
+  const scoreData = await scoreResponse.json();
+  const tier = Number(scoreData?.tier) || 0;
+  const tierName = scoreData?.tierName || tierNameFromValue(tier);
+
+  return { tier, tierName };
 }
 
 async function mintNftOnChain(userAddress, tier) {
@@ -85,18 +85,62 @@ async function mintNftOnChain(userAddress, tier) {
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userAddress, deposits } = req.body;
-  const wMean = weightedMean(deposits);
-  const mad = meanAbsoluteDeviation(deposits);
-  const { tier, tierName } = computeScoreAndTier(wMean, mad, (deposits || []).length);
+  const { userAddress, deposits, totalVolume } = req.body || {};
+
+  if (!userAddress) {
+    return res.status(400).json({ error: 'userAddress es requerido', status: 'error' });
+  }
+
+  const fallbackVolumeFromDeposits = Array.isArray(deposits)
+    ? deposits.reduce((acc, d) => acc + (Number(d?.amount) || 0), 0)
+    : 0;
+
+  const effectiveTotalVolume = Number(totalVolume) || fallbackVolumeFromDeposits;
+
+  let tier;
+  let tierName;
+  try {
+    const tierResult = await resolveTierFromCanonicalScore(req, userAddress, effectiveTotalVolume);
+    tier = tierResult.tier;
+    tierName = tierResult.tierName;
+  } catch (scoreError) {
+    return res.status(500).json({
+      status: "error",
+      message: scoreError?.message || "No se pudo validar el nivel para mintear",
+    });
+  }
   
   if (tier >= 1) {
     const mintResult = await mintNftOnChain(userAddress, tier);
-    if (mintResult.success) return res.json({ txHash: mintResult.hash, status: "minted" });
+    if (mintResult.success) {
+      return res.json({ txHash: mintResult.hash, tier, tierName, status: "minted" });
+    }
+
+    return res.status(500).json({
+      status: "error",
+      tier,
+      tierName,
+      message: mintResult.error || "No se pudo mintear el NFT",
+    });
   }
-  res.json({ message: "Nivel insuficiente", status: "pending" });
+
+  return res.json({
+    message: "Nivel insuficiente",
+    tier,
+    tierName,
+    status: "pending",
+  });
 }

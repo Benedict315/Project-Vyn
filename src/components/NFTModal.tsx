@@ -10,16 +10,12 @@ interface NFTModalProps {
   txHash?: string;
 }
 
-// 🚀 RUTA BASE EXACTA DE TU REPOSITORIO DE GITHUB
-const GITHUB_BASE_URL = "https://raw.githubusercontent.com/YORCH12/Stellar-Hack-vinculo-credito/main/images";
-
-// MAPEO A TUS NOMBRES DE ARCHIVO
-const NFT_IMAGES: Record<string, string> = {
-  "Bronce": `${GITHUB_BASE_URL}/bronce.png`,
-  "Plata": `${GITHUB_BASE_URL}/plata.png`,
-  "Oro": `${GITHUB_BASE_URL}/oro.png`,
-  "Diamante": `${GITHUB_BASE_URL}/diamante.png`,
-  "Platino": `${GITHUB_BASE_URL}/platino.png`,
+const LEVEL_META: Record<string, { label: string; image: string }> = {
+  Bronce: { label: "Bronce", image: "/images/bronce.png" },
+  Plata: { label: "Plata", image: "/images/plata.png" },
+  Oro: { label: "Oro", image: "/images/oro.png" },
+  Diamante: { label: "Diamante", image: "/images/diamante.png" },
+  Platino: { label: "Platino", image: "/images/platino.png" },
 };
 
 const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVolume, txHash }: NFTModalProps) => {
@@ -28,8 +24,9 @@ const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVol
   const truncate = (addr: string) =>
     addr.length > 12 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
 
-  // Obtenemos la imagen de GitHub, o usamos Plata por defecto si falla algo
-  const imageUrl = NFT_IMAGES[level] || NFT_IMAGES["Plata"];
+  const currentLevel = LEVEL_META[level] ? level : "Bronce";
+  const imageUrl = LEVEL_META[currentLevel].image;
+  const levelLabel = LEVEL_META[currentLevel].label;
 
   // Mapeo de colores para el borde brillante según el nivel
   const levelColors: Record<string, string> = {
@@ -71,19 +68,18 @@ const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVol
               {/* Cargando la imagen desde GitHub */}
               <img 
                 src={imageUrl} 
-                alt={`NFT Nivel ${level}`} 
+                alt={`NFT Nivel ${levelLabel}`} 
                 className="w-full h-full object-cover rounded-xl drop-shadow-md group-hover:scale-110 transition-transform duration-500"
                 onError={(e) => {
-                  // Fallback: Si la imagen falla en cargar (ej. si no se ha hecho push a github)
                   (e.target as HTMLImageElement).style.display = 'none';
                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                 }}
               />
               
-              {/* Icono de respaldo si la imagen de GitHub no carga */}
+              {/* Fallback si la imagen no está disponible. */}
               <div className="hidden flex-col items-center justify-center">
                 <Award className="w-14 h-14 text-primary" />
-                <p className="text-lg font-extrabold text-foreground tracking-tight leading-none mt-2">Nivel {level}</p>
+                <p className="text-lg font-extrabold text-foreground tracking-tight leading-none mt-2">Nivel {levelLabel}</p>
                 <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mt-1">Vin · Stellar</p>
               </div>
 
@@ -105,7 +101,7 @@ const NFTModal = ({ open, onClose, walletAddress, level, depositsCount, totalVol
           <div className="w-full bg-secondary rounded-xl p-4 space-y-2.5 text-left mb-5">
             <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">Nivel Alcanzado</span>
-              <span className="text-xs font-bold text-foreground">{level}</span>
+              <span className="text-xs font-bold text-foreground">{levelLabel}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">Historial de Depósitos</span>

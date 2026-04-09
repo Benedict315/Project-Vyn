@@ -15,8 +15,9 @@ import {
 } from "@stellar/stellar-sdk";
 import { requestAccess, signTransaction } from "@stellar/freighter-api";
 
-// ⚠️ CONTRACT ID DEFINITIVO
-const LENDING_CONTRACT_ID = "CDNF6NGNB7RG7QLZYPMWROVSV3VRVWX2FRZQTNT3Y2GRBNWJP3GEBONV"; 
+const LENDING_CONTRACT_ID =
+  import.meta.env.VITE_LENDING_CONTRACT_ID ||
+  "CDNF6NGNB7RG7QLZYPMWROVSV3VRVWX2FRZQTNT3Y2GRBNWJP3GEBONV";
 
 const CreditSection = () => {
   const { creditWithdrawn, withdrawCredit, deposits } = useApp();
@@ -41,6 +42,34 @@ const CreditSection = () => {
     isUnlocked: false
   });
 
+  const toFriendlyWithdrawError = (error: any) => {
+    const raw = String(error?.message || "").toLowerCase();
+
+    // El contrato llega a consultar balance() y luego revierte en request_loan.
+    // Eso normalmente significa falta de liquidez en el pool de préstamos.
+    if (
+      raw.includes("request_loan") &&
+      raw.includes("balance") &&
+      (raw.includes("hosterror") || raw.includes("invalidaction") || raw.includes("unreachablecodereached"))
+    ) {
+      return "No hay liquidez suficiente en el pool para desembolsar este monto ahora. Intenta más tarde o retira un monto menor.";
+    }
+
+    if (raw.includes("active loan") || raw.includes("no active loan")) {
+      return "Ya tienes un préstamo activo. Debes pagarlo antes de solicitar uno nuevo.";
+    }
+
+    if (raw.includes("tier") || raw.includes("sbt")) {
+      return "Tu NFT actual no habilita este crédito todavía. Actualiza tu nivel e intenta nuevamente.";
+    }
+
+    if (raw.includes("cancelada") || raw.includes("cancelled")) {
+      return "Cancelaste la firma en Freighter. No se realizó el retiro.";
+    }
+
+    return "No pudimos procesar el retiro ahora. Intenta nuevamente en unos segundos.";
+  };
+
   // 💰 CÁLCULO DEL TOTAL A PAGAR (Principal + 5% de Interés)
   const totalToPay = creditData.limit * 1.05;
 
@@ -50,7 +79,13 @@ const CreditSection = () => {
 
     const fetchBlockchainCredit = async () => {
       try {
-        if (!wallet) return;
+        if (!wallet) {
+          // Esperamos a que la wallet del contexto esté disponible.
+          if (isMounted) setLoadingCredit(true);
+          return;
+        }
+
+        if (isMounted) setLoadingCredit(true);
 
         // Guardamos la wallet real del usuario
         setRegisteredWallet(wallet);
@@ -86,7 +121,7 @@ const CreditSection = () => {
       isMounted = false;
       clearInterval(intervalId);
     };
-  }, [deposits]);
+  }, [wallet, deposits]);
 
   // ⏳ TEMPORIZADOR DE COBRO (Se activa solo si hay un préstamo activo)
   useEffect(() => {
@@ -156,7 +191,7 @@ const CreditSection = () => {
 
     } catch (error: any) {
       console.error("❌ Error al retirar:", error);
-      setErrorMsg(error?.message || "Ocurrió un error al procesar el retiro.");
+      setErrorMsg(toFriendlyWithdrawError(error));
     } finally {
       setLoadingTx(false);
     }

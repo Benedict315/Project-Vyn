@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { fetchContractBalance } from "../stellar/queries";
-import { Shield, Star, Crown, Gem, Trophy, Activity, Loader2, ArrowRight } from "lucide-react";
+import { Shield, Star, Crown, Gem, Trophy, Activity, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface Level {
@@ -43,9 +43,13 @@ const ProgressRing = () => {
 
   const [riskScore, setRiskScore] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [onChainTier, setOnChainTier] = useState(0); 
   const [needsMinting, setNeedsMinting] = useState(false);
   const [levelToMint, setLevelToMint] = useState<Level | null>(null);
+  const [historyCount, setHistoryCount] = useState(0);
+  const [minHistoryRequired, setMinHistoryRequired] = useState(30);
+  const [isHistoryEligible, setIsHistoryEligible] = useState(false);
 
   // 1. Función de carga envuelta en useCallback para evitar bucles infinitos
   const refreshData = useCallback(async (isInitial = false) => {
@@ -77,6 +81,15 @@ const ProgressRing = () => {
       const onChainData = await onChainRes.json();
       const scoreData = await scoreRes.json();
 
+      const eligibility = scoreData?.eligibility || {};
+      const txCount = Number(eligibility?.historyCount) || 0;
+      const minRequired = Number(eligibility?.minHistoryRequired) || 30;
+      const eligibleByHistory = Boolean(eligibility?.isHistoryEligible);
+
+      setHistoryCount(txCount);
+      setMinHistoryRequired(minRequired);
+      setIsHistoryEligible(eligibleByHistory);
+
       // Mapeo de seguridad para que la barra nunca baje si ya tiene un NFT
       const tierToScore: Record<number, number> = { 0: 0, 1: 50, 2: 150, 3: 500, 4: 1000 };
       const blockchainTier = onChainData.tier || 0;
@@ -88,9 +101,9 @@ const ProgressRing = () => {
       setRiskScore(finalScore);
       setOnChainTier(blockchainTier);
 
-      // Verificamos si merece un ascenso
+      // Verificamos si merece un ascenso solo cuando hay historial suficiente.
       const calculatedTier = scoreData.tier || 0;
-      if (calculatedTier > blockchainTier && calculatedTier >= 1) {
+      if (eligibleByHistory && calculatedTier > blockchainTier && calculatedTier >= 1) {
         setNeedsMinting(true);
         setLevelToMint(LEVELS[calculatedTier] || LEVELS[1]);
       } else {
@@ -114,6 +127,16 @@ const ProgressRing = () => {
     return () => clearInterval(interval);
   }, [refreshData]);
 
+  const handleManualRefresh = async () => {
+    if (!walletAddress || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await refreshData(false);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const current = getCurrentLevel(riskScore);
   const next = getNextLevel(riskScore);
 
@@ -121,9 +144,12 @@ const ProgressRing = () => {
     ? Math.min((riskScore - current.minScore) / (next.minScore - current.minScore), 1)
     : 1;
 
+  const historyProgress = Math.min(historyCount / Math.max(minHistoryRequired, 1), 1);
+  const displayProgress = isHistoryEligible ? progress : historyProgress;
+
   const radius = 40;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - progress * circumference;
+  const offset = circumference - displayProgress * circumference;
   const Icon = current.icon;
 
   if (isLoading) {
@@ -146,6 +172,20 @@ const ProgressRing = () => {
 
   return (
     <div className="card-elevated p-5 transition-all duration-500 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold tracking-wide uppercase text-muted-foreground">Ring Score</span>
+        <button
+          type="button"
+          onClick={handleManualRefresh}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-60"
+          title="Actualizar Ring Score"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? "Actualizando..." : "Refresh"}
+        </button>
+      </div>
+
       <div className="flex items-center gap-5">
         <div className="relative w-24 h-24 flex-shrink-0">
           <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
@@ -161,7 +201,7 @@ const ProgressRing = () => {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-lg font-extrabold text-foreground tabular-nums leading-none">
-              {Math.round(progress * 100)}%
+              {isHistoryEligible ? `${Math.round(displayProgress * 100)}%` : "Bloq"}
             </span>
           </div>
         </div>
@@ -173,14 +213,24 @@ const ProgressRing = () => {
           </div>
           
           <p className="text-base font-bold text-foreground text-balance">
-            {next
-              ? `Camino al Nivel ${next.name} ${next.emoji}`
-              : `¡Nivel ${current.name} Máximo! ${current.emoji}`}
+            {isHistoryEligible
+              ? (next
+                ? `Camino al Nivel ${next.name} ${next.emoji}`
+                : `¡Nivel ${current.name} Máximo! ${current.emoji}`)
+              : "Sigue usando Vyn para desbloquear tu reputación"}
           </p>
           
           <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground font-medium">
             <Activity className="w-3.5 h-3.5 text-primary" />
-            Trust Score: <span className="font-bold text-primary">{riskScore.toFixed(1)} pts</span>
+            {isHistoryEligible ? (
+              <>
+                Trust Score: <span className="font-bold text-primary">{riskScore.toFixed(1)} pts</span>
+              </>
+            ) : (
+              <>
+                Historial: <span className="font-bold text-primary">{historyCount}/{minHistoryRequired} transacciones</span>
+              </>
+            )}
           </div>
 
           <div className="flex gap-1.5 mt-3">

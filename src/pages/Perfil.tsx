@@ -8,9 +8,56 @@ import BottomNav from "@/components/BottomNav";
 import WalletSetupModal from "@/components/WalletSetupModal";
 import NFTModal from "@/components/NFTModal";
 import logoVin from "@/assets/logo-vin.png";
+import { toast } from "@/hooks/use-toast";
 
 const Perfil = () => {
   const navigate = useNavigate();
+
+  const tierToNumber = (tierName: string) => {
+    if (tierName === "Plata") return 1;
+    if (tierName === "Oro") return 2;
+    if (tierName === "Diamante") return 3;
+    if (tierName === "Platino") return 4;
+    return 0;
+  };
+
+  const tierFromScore = (score: number) => {
+    if (score >= 1000) return 4;
+    if (score >= 500) return 3;
+    if (score >= 150) return 2;
+    if (score >= 50) return 1;
+    return 0;
+  };
+
+  const getMintFeedback = (rawMessage: string | undefined, currentLevel: string) => {
+    const message = (rawMessage || "").toLowerCase();
+
+    if (message.includes("nivel insuficiente")) {
+      return {
+        title: "Aun no alcanzas el siguiente nivel",
+        description: "Sigue ahorrando y vuelve a intentar.",
+        variant: "warning" as const,
+      };
+    }
+
+    if (
+      message.includes("este nivel exacto") ||
+      message.includes("unreachablecodereached") ||
+      message.includes("invalidaction")
+    ) {
+      return {
+        title: "Nivel ya minteado",
+        description: `Ya tienes el NFT ${currentLevel}. Sube tu reputacion para mintear el siguiente nivel.`,
+        variant: "warning" as const,
+      };
+    }
+
+    return {
+      title: "No se pudo mintear",
+      description: "No pudimos mintear tu NFT en este momento. Intentalo nuevamente en unos segundos.",
+      variant: "destructive" as const,
+    };
+  };
 
   const { creditWithdrawn } = useApp();
   const { wallet: walletAddress, shortWallet, disconnect } = useWallet();
@@ -21,6 +68,7 @@ const Perfil = () => {
   const [isMinting, setIsMinting] = useState(false);
   const [showNFTModal, setShowNFTModal] = useState(false);
   const [nftTxHash, setNftTxHash] = useState<string | undefined>();
+  const [lastMintedLevel, setLastMintedLevel] = useState("Bronce");
 
   // --- ESTADOS ON-CHAIN ACTUALIZADOS ---
   const [onChainXLM, setOnChainXLM] = useState<number | string>(0);
@@ -30,6 +78,11 @@ const Perfil = () => {
   const [riskData, setRiskData] = useState({ 
     score: 0, 
     tier: 0, 
+  });
+  const [historyGate, setHistoryGate] = useState({
+    historyCount: 0,
+    minHistoryRequired: 30,
+    isHistoryEligible: false,
   });
 
   const displayName = walletAddress ? shortWallet : "Conecta tu wallet";
@@ -83,7 +136,7 @@ const Perfil = () => {
   // 2. MOTOR DE RIESGO (Score basado en balance real)
   useEffect(() => {
     const fetchRiskScore = async () => {
-      if (Number(onChainXLM) <= 0 || !walletAddress) return;
+      if (!walletAddress) return;
       try {
         const response = await fetch(`/api/calculate-score`, {
           method: "POST",
@@ -97,6 +150,13 @@ const Perfil = () => {
         const data = await response.json();
         if (data.score !== undefined) {
           setRiskData(prev => ({ ...prev, score: data.score }));
+
+          const eligibility = data?.eligibility || {};
+          setHistoryGate({
+            historyCount: Number(eligibility?.historyCount) || 0,
+            minHistoryRequired: Number(eligibility?.minHistoryRequired) || 30,
+            isHistoryEligible: Boolean(eligibility?.isHistoryEligible),
+          });
         }
       } catch (error) {
         console.error("Error sincronizando matemáticas:", error);
@@ -106,15 +166,43 @@ const Perfil = () => {
     if (!loadingProfile) fetchRiskScore();
   }, [onChainXLM, walletAddress, loadingProfile]);
 
-  // Lógica de visualización de progreso
-  let nextThreshold = 50; 
-  if (riskData.score >= 50) nextThreshold = 150;
-  if (riskData.score >= 150) nextThreshold = 500;
-  if (riskData.score >= 500) nextThreshold = 1000;
-  if (riskData.score >= 1000) nextThreshold = riskData.score;
+  // Lógica de visualización de progreso alineada con ProgressRing:
+  // avance dentro del rango del nivel actual hacia el siguiente nivel.
+  const tierThresholds: Record<number, { current: number; next: number }> = {
+    0: { current: 0, next: 50 },
+    1: { current: 50, next: 150 },
+    2: { current: 150, next: 500 },
+    3: { current: 500, next: 1000 },
+    4: { current: 1000, next: 1000 },
+  };
 
-  const visualPercentage = Math.min(100, Math.floor((riskData.score / nextThreshold) * 100));
+  const calculatedTier = tierFromScore(riskData.score);
+  const { current: currentThreshold, next: nextThreshold } =
+    tierThresholds[calculatedTier] || tierThresholds[0];
+
+  const range = Math.max(1, nextThreshold - currentThreshold);
+  const progressInTier = ((riskData.score - currentThreshold) / range) * 100;
+  const tierVisualPercentage = Math.min(100, Math.max(0, Math.floor(progressInTier)));
+  const historyVisualPercentage = Math.min(
+    100,
+    Math.floor((historyGate.historyCount / Math.max(historyGate.minHistoryRequired, 1)) * 100),
+  );
+  const visualPercentage = historyGate.isHistoryEligible ? tierVisualPercentage : historyVisualPercentage;
   const isUnlocked = riskData.tier >= 1; 
+  const currentTier = tierToNumber(nftTier);
+  const isMaxTier = currentTier >= 4;
+  const eligibleTier = tierFromScore(riskData.score);
+  const canMintUpgrade = eligibleTier > currentTier;
+  const mintButtonDisabled = isMinting || !walletAddress || Number(onChainXLM) === 0 || !canMintUpgrade;
+
+  const mintButtonText = (() => {
+    if (isMinting) return "Firmando en Soroban...";
+    if (!walletAddress) return "Conecta tu wallet para mintear";
+    if (Number(onChainXLM) === 0) return "Deposita XLM para evaluar";
+    if (!canMintUpgrade && currentTier >= 4) return "Nivel maximo alcanzado";
+    if (!canMintUpgrade) return `Ya tienes ${nftTier}. Espera al siguiente nivel`;
+    return "Evaluar y Subir de Nivel (NFT)";
+  })();
 
   const handleClaimNFT = async () => {
     if (!walletAddress) return;
@@ -125,18 +213,48 @@ const Perfil = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           userAddress: walletAddress, 
-          totalVolume: Number(onChainXLM)
+          totalVolume: Number(onChainXLM),
+          depositCount: Number(onChainXLM) > 0 ? 1 : 0,
+          deposits: [{ amount: Number(onChainXLM), daysAgo: 0 }],
         })
       });
       const data = await response.json();
       if (response.ok && data.status === "minted") {
+        const mintedLevel = data.tierName || nftTier;
+        const mintedTier = Number(data.tier) || 0;
+
+        setNftTier(mintedLevel);
+        setLastMintedLevel(mintedLevel);
+        setRiskData(prev => ({ ...prev, tier: mintedTier }));
+
+        // Sincroniza el crédito visual con el nivel recién minteado.
+        if (mintedTier === 1) setAvailableCredit(300);
+        if (mintedTier === 2) setAvailableCredit(600);
+        if (mintedTier === 3) setAvailableCredit(1500);
+        if (mintedTier === 4) setAvailableCredit(5000);
+
         setNftTxHash(data.txHash);
         setShowNFTModal(true);
+        toast({
+          title: "NFT minteado con exito",
+          description: `Subiste a nivel ${mintedLevel}.`,
+        });
       } else {
-        alert(data.message || "Error al procesar el NFT");
+        const effectiveLevel = data?.tierName || nftTier;
+        const feedback = getMintFeedback(data?.message, effectiveLevel);
+        toast({
+          title: feedback.title,
+          description: feedback.description,
+          variant: feedback.variant,
+        });
       }
     } catch (error) {
       console.error("Error minteando:", error);
+      toast({
+        title: "Conexion inestable",
+        description: "No pudimos conectar con la red de Stellar. Intenta nuevamente en unos segundos.",
+        variant: "destructive",
+      });
     } finally {
       setIsMinting(false);
     }
@@ -213,7 +331,7 @@ const Perfil = () => {
           <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden mb-2 relative">
             <div
               className={`h-full rounded-full transition-all duration-1000 ease-out ${isUnlocked ? "bg-gradient-to-r from-primary to-emerald-400" : "bg-muted-foreground/40"}`}
-              style={{ width: `${visualPercentage}%` }}
+              style={{ width: `${isMaxTier ? 100 : visualPercentage}%` }}
             />
           </div>
           
@@ -225,17 +343,25 @@ const Perfil = () => {
                 <Lock className="w-3 h-3" /> Requiere Nivel Plata
               </span>
             )}
-            <span className="font-bold">{visualPercentage}% al sig. nivel</span>
+            {isMaxTier ? (
+              <span className="font-bold text-primary">Nivel máximo alcanzado</span>
+            ) : !historyGate.isHistoryEligible ? (
+              <span className="font-bold text-amber-600">
+                Mantén tu actividad para desbloquear reputación ({historyGate.historyCount}/{historyGate.minHistoryRequired})
+              </span>
+            ) : (
+              <span className="font-bold">{visualPercentage}% al sig. nivel</span>
+            )}
           </div>
 
-          {nftTier !== "Diamante" ? (
+          {nftTier !== "Platino" ? (
             <button
               onClick={handleClaimNFT}
-              disabled={isMinting || !walletAddress || Number(onChainXLM) === 0}
+              disabled={mintButtonDisabled}
               className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground py-3.5 text-sm font-bold shadow-lg shadow-primary/25 active:scale-95 transition-all disabled:opacity-50"
             >
               {isMinting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Award className="w-5 h-5" />}
-              {isMinting ? "Firmando en Soroban..." : "Evaluar y Subir de Nivel (NFT)"}
+              {mintButtonText}
             </button>
           ) : (
               <div className="w-full mt-2 rounded-xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 py-3 px-3 text-xs font-bold text-blue-700 text-center uppercase tracking-wider">
@@ -278,7 +404,7 @@ const Perfil = () => {
         open={showNFTModal}
         onClose={() => setShowNFTModal(false)}
         walletAddress={walletAddress || ""}
-        level={nftTier}
+        level={lastMintedLevel}
         depositsCount={Number(onChainXLM) > 0 ? 1 : 0}
         totalVolume={Number(onChainXLM)}
         txHash={nftTxHash}
