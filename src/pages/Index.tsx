@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, FastForward, LogOut, User } from "lucide-react";
+import { Plus, LogOut, User, AlertTriangle } from "lucide-react";
 import logoVin from "@/assets/logo-vin.png";
 import BalanceCard from "@/components/BalanceCard";
 import ProgressRing from "@/components/ProgressRing";
@@ -7,28 +7,20 @@ import CreditSection from "@/components/CreditSection";
 import ActivityList from "@/components/ActivityList";
 import DepositModal from "@/components/DepositModal";
 import BottomNav from "@/components/BottomNav";
-import { useApp } from "@/context/AppContext";
-import { useWallet } from "@/hooks/useWallet"; // <-- Tu hook de sesión Web3
+import { useWallet } from "@/hooks/useWallet";
 
 const Index = () => {
-  // 1. Traemos la función para simular el tiempo del contexto
-  
-  
-  // 2. Traemos la info de la wallet y la función de desconexión
-  const { shortWallet, disconnect } = useWallet();
-  
-  // 3. Estado para controlar el modal de depósitos
+  const { shortWallet, disconnect, walletStatus } = useWallet();
   const [depositOpen, setDepositOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header Adaptado a Web3 */}
+      {/* Header */}
       <header className="px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img src={logoVin} alt="Vyn" className="w-9 h-9 object-contain" />
           <div>
             <h1 className="text-xl font-extrabold text-foreground tracking-tight">Vyn</h1>
-            {/* Visualización de la Wallet conectada */}
             <div className="flex items-center gap-1.5 mt-0.5 text-muted-foreground">
               <User className="w-3 h-3 text-emerald-500" />
               <p className="text-[10px] font-mono font-bold tracking-wider uppercase">
@@ -37,10 +29,8 @@ const Index = () => {
             </div>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
 
-          {/* Botón para Cerrar Sesión y limpiar LocalStorage */}
+        <div className="flex items-center gap-2">
           <button
             onClick={disconnect}
             className="flex items-center justify-center p-2 text-muted-foreground hover:text-destructive bg-secondary/50 rounded-full transition-colors active:scale-95 border border-transparent hover:border-destructive/20"
@@ -50,6 +40,25 @@ const Index = () => {
           </button>
         </div>
       </header>
+
+      {/* Disconnected wallet banner */}
+      {walletStatus === "disconnected" && (
+        <div className="mx-5 mb-2 flex items-start gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-amber-700">Wallet desconectada</p>
+            <p className="text-[11px] text-amber-800/70">
+              Freighter no está disponible. Reconecta tu wallet para operar.
+            </p>
+          </div>
+          <button
+            onClick={disconnect}
+            className="text-[11px] font-bold text-amber-700 hover:underline flex-shrink-0"
+          >
+            Reconectar
+          </button>
+        </div>
+      )}
 
       {/* Content Main */}
       <main className="px-5 space-y-4 max-w-md mx-auto mt-2">

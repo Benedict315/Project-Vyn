@@ -38,7 +38,8 @@ const Onboarding = () => {
   const next = () => {
     if (isLast) {
       localStorage.setItem("vinculo_onboarded", "1");
-      navigate("/", { replace: true });
+      // Always funnel to login — wallet connection happens there
+      navigate("/login", { replace: true });
     } else {
       setCurrent((p) => p + 1);
     }
@@ -46,7 +47,7 @@ const Onboarding = () => {
 
   const skip = () => {
     localStorage.setItem("vinculo_onboarded", "1");
-    navigate("/", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (

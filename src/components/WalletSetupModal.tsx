@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Wallet, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { requestAccess, isConnected } from "@stellar/freighter-api";
+import { Wallet, Loader2, CheckCircle2, AlertCircle, Smartphone, ExternalLink } from "lucide-react";
+import { useMobileWallet } from "@/hooks/useMobileWallet";
 
 interface WalletSetupModalProps {
   onComplete: () => void;
@@ -10,43 +10,33 @@ interface WalletSetupModalProps {
 
 const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
   const { user } = useAuth();
+  const { isMobile, isFreighterReady, connect } = useMobileWallet();
+
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
+  const [walletProvider, setWalletProvider] = useState<"freighter" | "albedo" | null>(null);
 
   const handleConnect = async () => {
     setConnecting(true);
     setError(null);
 
-    try {
-      const connected = await isConnected();
-      if (!connected) {
-        setError("Freighter no está instalado. Instálalo desde freighter.app");
-        setConnecting(false);
-        return;
-      }
+    const result = await connect();
 
-      const accessObj = await requestAccess();
-
-      if (accessObj.error) {
-        setError("Conexión rechazada. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
-      const publicKey = accessObj.address;
-      if (!publicKey) {
-        setError("No se pudo obtener la dirección. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
-      setAddress(publicKey);
-    } catch {
-      setError("Error al conectar con Freighter. ¿Está instalada la extensión?");
+    if (!result.ok) {
+      setError(
+        result.cancelled
+          ? "Conexión cancelada. Puedes intentarlo de nuevo."
+          : result.error
+      );
+      setConnecting(false);
+      return;
     }
+
+    setAddress(result.address);
+    setWalletProvider(result.provider);
     setConnecting(false);
   };
 
@@ -66,12 +56,20 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
       return;
     }
 
+    // Persist provider choice for future signing
+    if (walletProvider) {
+      localStorage.setItem("vinculo_wallet_provider", walletProvider);
+    }
+    localStorage.setItem("vinculo_wallet", address);
+
     setDone(true);
     setTimeout(onComplete, 1200);
   };
 
   const truncate = (addr: string) =>
     addr.length > 16 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+
+  const providerLabel = isMobile ? "Albedo" : isFreighterReady ? "Freighter" : "Albedo";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm px-6">
@@ -88,11 +86,13 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
           <>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-primary" />
+                {isMobile ? <Smartphone className="w-5 h-5 text-primary" /> : <Wallet className="w-5 h-5 text-primary" />}
               </div>
               <div>
                 <h2 className="text-lg font-bold text-foreground leading-tight">Conecta tu wallet</h2>
-                <p className="text-xs text-muted-foreground">Usa la extensión Freighter</p>
+                <p className="text-xs text-muted-foreground">
+                  {isMobile ? "Vía Albedo (web wallet)" : `Vía ${providerLabel}`}
+                </p>
               </div>
             </div>
 
@@ -100,6 +100,45 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               <div className="bg-secondary rounded-xl px-4 py-3">
                 <p className="text-xs text-muted-foreground mb-0.5">Dirección Stellar</p>
                 <p className="text-sm font-mono font-medium text-foreground">{truncate(address)}</p>
+                {walletProvider && (
+                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">
+                    via {walletProvider}
+                  </p>
+                )}
+              </div>
+            ) : !isMobile && !isFreighterReady ? (
+              /* Desktop — Freighter not installed: offer both paths clearly */
+              <div className="space-y-3">
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-center">
+                  <p className="text-xs font-bold text-amber-700 mb-0.5">Freighter no detectado</p>
+                  <p className="text-[11px] text-amber-800/70">
+                    Instala la extensión o continúa con Albedo, una wallet web que no requiere instalación.
+                  </p>
+                </div>
+                <button
+                  onClick={handleConnect}
+                  disabled={connecting}
+                  className="w-full rounded-xl border-2 border-dashed border-border bg-secondary/50 py-5 flex flex-col items-center gap-2 hover:bg-secondary transition-colors active:scale-[0.98] disabled:opacity-50"
+                >
+                  {connecting ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  ) : (
+                    <Wallet className="w-6 h-6 text-primary" />
+                  )}
+                  <span className="text-sm font-semibold text-foreground">
+                    {connecting ? "Abriendo Albedo..." : "Conectar con Albedo (web)"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">No requiere extensión</span>
+                </button>
+                <a
+                  href="https://www.freighter.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1 text-xs text-primary hover:underline py-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Instalar Freighter en su lugar
+                </a>
               </div>
             ) : (
               <button
@@ -113,18 +152,30 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   <Wallet className="w-6 h-6 text-primary" />
                 )}
                 <span className="text-sm font-semibold text-foreground">
-                  {connecting ? "Conectando..." : "Conectar Freighter"}
+                  {connecting ? "Conectando..." : `Conectar con ${providerLabel}`}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Se abrirá la extensión del navegador
+                  {isMobile
+                    ? "Se abrirá Albedo en tu navegador"
+                    : "Se abrirá la extensión Freighter"}
                 </span>
               </button>
             )}
 
             {error && (
-              <div className="flex items-start gap-2 bg-destructive/10 rounded-lg px-3 py-2.5">
-                <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive">{error}</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 bg-destructive/10 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive">{error}</p>
+                </div>
+                {/* Explicit retry path — never leave the user stuck */}
+                <button
+                  onClick={() => { setError(null); handleConnect(); }}
+                  disabled={connecting}
+                  className="w-full text-xs font-semibold text-primary hover:underline py-1 disabled:opacity-50"
+                >
+                  Intentar de nuevo
+                </button>
               </div>
             )}
 
@@ -146,14 +197,17 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               )}
             </div>
 
-            <a
-              href="https://www.freighter.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-center text-xs text-primary hover:underline"
-            >
-              ¿No tienes Freighter? Descárgala aquí →
-            </a>
+            {!isMobile && isFreighterReady === false && address && (
+              <a
+                href="https://www.freighter.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" />
+                ¿No tienes Freighter? Descárgala aquí
+              </a>
+            )}
           </>
         )}
       </div>
