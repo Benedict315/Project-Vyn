@@ -1,44 +1,43 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import onboardingSave from "@/assets/onboarding-save.png";
 import onboardingReputation from "@/assets/onboarding-reputation.png";
 import onboardingCredit from "@/assets/onboarding-credit.png";
 
-const steps = [
-  {
-    image: onboardingSave,
-    title: "Ahorra poquito a poquito 🐷",
-    description:
-      "Cada semana guardas una parte de lo que ganas. No importa si es poco — lo que cuenta es la constancia. ¡Tú puedes!",
-    bg: "from-blue-50 to-white",
-  },
-  {
-    image: onboardingReputation,
-    title: "Sube de nivel 🏆",
-    description:
-      "Con 3 depósitos seguidos alcanzas el Nivel Plata. Así demuestras que eres de fiar y te abres puertas a cosas increíbles.",
-    bg: "from-indigo-50 to-white",
-  },
-  {
-    image: onboardingCredit,
-    title: "¡Recibe tu crédito! 🎉",
-    description:
-      "Al llegar a Nivel Plata desbloqueas hasta 300 XLM de crédito. Sin papeleo, sin filas — directo a tu celular.",
-    bg: "from-purple-50 to-white",
-  },
-];
-
 const Onboarding = () => {
   const [current, setCurrent] = useState(0);
   const navigate = useNavigate();
+  const { t } = useTranslation();
+
+  const steps = [
+    {
+      image: onboardingSave,
+      title: t("onboarding.steps.save.title"),
+      description: t("onboarding.steps.save.description"),
+      bg: "from-blue-50 to-white",
+    },
+    {
+      image: onboardingReputation,
+      title: t("onboarding.steps.reputation.title"),
+      description: t("onboarding.steps.reputation.description"),
+      bg: "from-indigo-50 to-white",
+    },
+    {
+      image: onboardingCredit,
+      title: t("onboarding.steps.credit.title"),
+      description: t("onboarding.steps.credit.description"),
+      bg: "from-purple-50 to-white",
+    },
+  ];
+
   const isLast = current === steps.length - 1;
   const step = steps[current];
 
   const next = () => {
     if (isLast) {
       localStorage.setItem("vinculo_onboarded", "1");
-      // Always funnel to login — wallet connection happens there
       navigate("/login", { replace: true });
     } else {
       setCurrent((p) => p + 1);
@@ -51,72 +50,66 @@ const Onboarding = () => {
   };
 
   return (
-    <div
-      className={`min-h-screen bg-gradient-to-b ${step.bg} flex flex-col items-center justify-between px-6 py-8 overflow-hidden transition-colors duration-500`}
-    >
-      {/* Skip */}
-      <div className="w-full flex justify-end">
-        {!isLast && (
-          <button
-            onClick={skip}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors active:scale-95"
-          >
-            Omitir
-          </button>
-        )}
+    <div className={`min-h-screen bg-gradient-to-b ${step.bg} flex flex-col`}>
+      {/* Skip button */}
+      <div className="flex justify-end px-6 pt-[max(1rem,env(safe-area-inset-top))]">
+        <button
+          onClick={skip}
+          className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5"
+        >
+          {t("onboarding.cta_skip")}
+        </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col items-center justify-center max-w-sm w-full">
-        <div
+      <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+        <img
           key={current}
-          className="flex flex-col items-center text-center opacity-0 animate-fade-up"
-          style={{ animationFillMode: "forwards" }}
+          src={step.image}
+          alt={step.title}
+          className="w-64 h-64 object-contain mb-8 animate-in fade-in zoom-in duration-500"
+        />
+        <h2
+          key={`title-${current}`}
+          className="text-2xl font-extrabold text-foreground mb-3 animate-in fade-in slide-in-from-bottom-4 duration-400"
         >
-          <img
-            src={step.image}
-            alt={step.title}
-            className="w-56 h-56 object-contain mb-8 drop-shadow-lg"
-          />
-          <h2 className="text-2xl font-extrabold tracking-tight text-foreground mb-3 text-balance leading-snug">
-            {step.title}
-          </h2>
-          <p className="text-base text-muted-foreground leading-relaxed text-pretty">
-            {step.description}
-          </p>
-        </div>
+          {step.title}
+        </h2>
+        <p
+          key={`desc-${current}`}
+          className="text-sm text-muted-foreground leading-relaxed max-w-xs animate-in fade-in slide-in-from-bottom-4 duration-500"
+        >
+          {step.description}
+        </p>
       </div>
 
-      {/* Bottom controls */}
-      <div className="w-full max-w-sm space-y-5">
-        {/* Dots */}
-        <div className="flex items-center justify-center gap-2">
-          {steps.map((_, i) => (
-            <div
-              key={i}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                i === current
-                  ? "w-7 bg-accent"
-                  : "w-2 bg-foreground/15"
-              }`}
-            />
-          ))}
-        </div>
+      {/* Dots */}
+      <div className="flex justify-center gap-2 mb-6">
+        {steps.map((_, i) => (
+          <div
+            key={i}
+            className={`h-2 rounded-full transition-all duration-300 ${
+              i === current ? "w-6 bg-primary" : "w-2 bg-primary/20"
+            }`}
+          />
+        ))}
+      </div>
 
-        {/* CTA */}
+      {/* CTA */}
+      <div className="px-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <button
           onClick={next}
-          className="btn-emerald w-full flex items-center justify-center gap-2 py-4 text-base"
+          className="w-full flex items-center justify-center gap-2 rounded-2xl bg-primary text-primary-foreground px-5 py-4 text-sm font-bold shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
         >
           {isLast ? (
             <>
-              <Sparkles className="w-5 h-5" />
-              ¡Vamos allá!
+              <Sparkles className="w-4 h-4" />
+              {t("onboarding.cta_start")}
             </>
           ) : (
             <>
-              Siguiente
-              <ArrowRight className="w-5 h-5" />
+              {t("onboarding.cta_next")}
+              <ArrowRight className="w-4 h-4" />
             </>
           )}
         </button>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Wallet, Loader2, CheckCircle2, AlertCircle, Smartphone, ExternalLink } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
 
 interface WalletSetupModalProps {
@@ -11,6 +12,7 @@ interface WalletSetupModalProps {
 const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
   const { user } = useAuth();
   const { isMobile, isFreighterReady, connect } = useMobileWallet();
+  const { t } = useTranslation();
 
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -28,7 +30,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
     if (!result.ok) {
       setError(
         result.cancelled
-          ? "Conexión cancelada. Puedes intentarlo de nuevo."
+          ? t("wallet_setup.error_cancelled")
           : result.error
       );
       setConnecting(false);
@@ -51,7 +53,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
       .eq("user_id", user.id);
 
     if (dbError) {
-      setError("No se pudo guardar. Intenta de nuevo.");
+      setError(t("wallet_setup.error_save"));
       setSaving(false);
       return;
     }
@@ -80,7 +82,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
         {done ? (
           <div className="flex flex-col items-center gap-3 py-4">
             <CheckCircle2 className="w-12 h-12 text-primary" />
-            <p className="text-lg font-bold text-foreground">¡Wallet conectada!</p>
+            <p className="text-lg font-bold text-foreground">{t("common.wallet_connected")}</p>
           </div>
         ) : (
           <>
@@ -89,9 +91,9 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                 {isMobile ? <Smartphone className="w-5 h-5 text-primary" /> : <Wallet className="w-5 h-5 text-primary" />}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-foreground leading-tight">Conecta tu wallet</h2>
+                <h2 className="text-lg font-bold text-foreground leading-tight">{t("wallet_setup.title")}</h2>
                 <p className="text-xs text-muted-foreground">
-                  {isMobile ? "Vía Albedo (web wallet)" : `Vía ${providerLabel}`}
+                  {isMobile ? t("wallet_setup.subtitle_albedo") : t("wallet_setup.subtitle_freighter")}
                 </p>
               </div>
             </div>
@@ -110,9 +112,9 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               /* Desktop — Freighter not installed: offer both paths clearly */
               <div className="space-y-3">
                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-center">
-                  <p className="text-xs font-bold text-amber-700 mb-0.5">Freighter no detectado</p>
+                  <p className="text-xs font-bold text-amber-700 mb-0.5">{t("wallet_setup.freighter_not_detected")}</p>
                   <p className="text-[11px] text-amber-800/70">
-                    Instala la extensión o continúa con Albedo, una wallet web que no requiere instalación.
+                    {t("wallet_setup.freighter_not_detected_description")}
                   </p>
                 </div>
                 <button
@@ -126,7 +128,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                     <Wallet className="w-6 h-6 text-primary" />
                   )}
                   <span className="text-sm font-semibold text-foreground">
-                    {connecting ? "Abriendo Albedo..." : "Conectar con Albedo (web)"}
+                    {connecting ? t("common.loading") : t("wallet_setup.connect_albedo")}
                   </span>
                   <span className="text-xs text-muted-foreground">No requiere extensión</span>
                 </button>
@@ -152,7 +154,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   <Wallet className="w-6 h-6 text-primary" />
                 )}
                 <span className="text-sm font-semibold text-foreground">
-                  {connecting ? "Conectando..." : `Conectar con ${providerLabel}`}
+                  {connecting ? t("common.loading") : `${t("wallet_setup.connect_freighter")}`}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {isMobile
@@ -174,7 +176,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   disabled={connecting}
                   className="w-full text-xs font-semibold text-primary hover:underline py-1 disabled:opacity-50"
                 >
-                  Intentar de nuevo
+                  {t("common.retry")}
                 </button>
               </div>
             )}
@@ -184,7 +186,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                 onClick={onComplete}
                 className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
               >
-                Después
+                {t("common.later")}
               </button>
               {address && (
                 <button
@@ -192,7 +194,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   disabled={saving}
                   className="flex-1 rounded-xl bg-primary text-primary-foreground py-2.5 text-sm font-semibold shadow-sm hover:bg-primary/90 transition-all active:scale-[0.97] disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Guardar"}
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t("common.save")}
                 </button>
               )}
             </div>

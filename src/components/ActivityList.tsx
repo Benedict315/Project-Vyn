@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { ArrowUpRight, ArrowDownLeft, PiggyBank, Loader2, ExternalLink } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // Definimos la estructura de nuestro movimiento
 interface Movement {
@@ -15,6 +16,7 @@ const ActivityList = () => {
   const { wallet: walletAddress } = useWallet();
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!walletAddress) {
@@ -46,7 +48,7 @@ const ActivityList = () => {
             return {
               id: effect.id,
               type: isDeposit ? "deposit" : "withdrawal",
-              label: isDeposit ? "Depósito a Vínculo" : "Retiro de Crédito",
+              label: isDeposit ? t("activity.tx_deposit") : t("activity.tx_withdrawal"),
               amount: parseFloat(effect.amount).toFixed(2),
               date: new Date(effect.created_at),
             };
@@ -89,10 +91,10 @@ const ActivityList = () => {
           <PiggyBank className="w-7 h-7 text-muted-foreground" />
         </div>
         <p className="text-sm font-bold text-foreground mb-0.5">
-          {walletAddress ? "Sin actividad aún" : "Wallet no conectada"}
+          {walletAddress ? t("activity.empty_title_no_activity") : t("activity.empty_title_no_wallet")}
         </p>
         <p className="text-xs text-muted-foreground">
-          {walletAddress ? "Realiza tu primer depósito para comenzar" : "Conecta Freighter para ver tu historial"}
+          {walletAddress ? t("activity.empty_description_no_activity") : t("activity.empty_description_no_wallet")}
         </p>
       </div>
     );
@@ -102,9 +104,9 @@ const ActivityList = () => {
   return (
     <div className="card-elevated divide-y divide-border">
       <div className="px-5 py-3 flex items-center justify-between">
-        <span className="text-xs font-bold tracking-wide uppercase text-muted-foreground">Actividad Reciente</span>
+        <span className="text-xs font-bold tracking-wide uppercase text-muted-foreground">{t("activity.header")}</span>
         <span className="text-[10px] font-semibold bg-secondary text-muted-foreground px-2 py-0.5 rounded-full">
-          Stellar Testnet
+          {t("common.stellar_testnet")}
         </span>
       </div>
       
@@ -146,7 +148,7 @@ const ActivityList = () => {
               rel="noreferrer"
               className="block text-[9px] font-medium text-muted-foreground mt-0.5 hover:text-foreground transition-colors flex items-center justify-end gap-0.5"
             >
-              Ver en red <ExternalLink className="w-2.5 h-2.5" />
+              {t("common.view_on_network")} <ExternalLink className="w-2.5 h-2.5" />
             </a>
           </div>
         </div>

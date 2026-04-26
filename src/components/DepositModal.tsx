@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Fingerprint, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "@/context/AppContext";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import confetti from "canvas-confetti";
@@ -24,6 +25,7 @@ interface Props {
 
 const DepositModal = ({ open, onClose }: Props) => {
   const { addDeposit, depositsCount, requiredDeposits, isUnlocked, setShowUnlockCelebration } = useApp();
+  const { t } = useTranslation();
   const [amount, setAmount] = useState("50");
   const [step, setStep] = useState<"input" | "signing" | "success" | "error">("input");
   const [errorMsg, setErrorMsg] = useState("");
@@ -181,9 +183,9 @@ const DepositModal = ({ open, onClose }: Props) => {
         {/* INPUT STEP */}
         {step === "input" && (
           <>
-            <h2 className="text-xl font-bold text-foreground mb-6">Depositar Ganancias</h2>
+            <h2 className="text-xl font-bold text-foreground mb-6">{t("deposit.title")}</h2>
             <div className="mb-6">
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">Monto (XLM)</label>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">{t("deposit.amount_label")}</label>
               <input
                 type="number"
                 value={amount}
@@ -202,7 +204,7 @@ const DepositModal = ({ open, onClose }: Props) => {
                     amount === String(v) ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"
                   }`}
                 >
-                  {v} XLM
+                  {v} {t("common.xlm")}
                 </button>
               ))}
             </div>
@@ -212,7 +214,7 @@ const DepositModal = ({ open, onClose }: Props) => {
               className="btn-emerald w-full flex items-center justify-center gap-2 py-4 text-base"
             >
               <Fingerprint className="w-5 h-5" />
-              Confirmar con Freighter
+              {t("deposit.confirm_button")}
             </button>
           </>
         )}
@@ -223,9 +225,9 @@ const DepositModal = ({ open, onClose }: Props) => {
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-5">
               <Fingerprint className="w-8 h-8 text-primary animate-pulse" />
             </div>
-            <p className="text-lg font-bold text-foreground mb-1">Preparando contrato...</p>
+            <p className="text-lg font-bold text-foreground mb-1">{t("deposit.signing_title")}</p>
             <p className="text-sm text-muted-foreground text-center max-w-[260px]">
-              Calculando recursos y esperando confirmación en Freighter.
+              {t("deposit.signing_description")}
             </p>
           </div>
         )}
@@ -236,9 +238,9 @@ const DepositModal = ({ open, onClose }: Props) => {
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
               <CheckCircle2 className="w-10 h-10 text-primary" />
             </div>
-            <p className="text-xl font-bold text-foreground mb-1">¡Depósito exitoso! 🎉</p>
+            <p className="text-xl font-bold text-foreground mb-1">{t("deposit.success_title")}</p>
             <p className="text-sm text-muted-foreground mb-4">
-              Se depositaron <span className="font-bold text-foreground">{amount} XLM</span>
+              {t("deposit.success_description", { amount })}
             </p>
 
             {txHash && (
@@ -249,7 +251,7 @@ const DepositModal = ({ open, onClose }: Props) => {
                 className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline mb-6"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                Ver en el explorador
+                {t("deposit.view_explorer")}
               </a>
             )}
 
@@ -257,7 +259,7 @@ const DepositModal = ({ open, onClose }: Props) => {
               onClick={handleClose}
               className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all"
             >
-              Listo
+              {t("common.done")}
             </button>
           </div>
         )}
@@ -268,7 +270,7 @@ const DepositModal = ({ open, onClose }: Props) => {
             <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-5">
               <AlertCircle className="w-10 h-10 text-destructive" />
             </div>
-            <p className="text-lg font-bold text-foreground mb-2">Error en el depósito</p>
+            <p className="text-lg font-bold text-foreground mb-2">{t("common.error")}</p>
             <p className="text-sm text-muted-foreground text-center max-w-[280px] mb-6">{errorMsg}</p>
 
             <div className="w-full flex gap-3">
@@ -276,13 +278,13 @@ const DepositModal = ({ open, onClose }: Props) => {
                 onClick={handleClose}
                 className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
               >
-                Cancelar
+                {t("common.cancel")}
               </button>
               <button
                 onClick={() => setStep("input")}
                 className="flex-1 rounded-xl bg-primary text-primary-foreground py-2.5 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all"
               >
-                Reintentar
+                {t("common.retry")}
               </button>
             </div>
           </div>
