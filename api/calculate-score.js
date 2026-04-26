@@ -95,7 +95,8 @@ async function getCleanHistory(userAddress) {
       )
       .map(op => ({
         amount: parseFloat(op.amount),
-        type: op.type === 'account_debited' ? "deposit" : "withdrawal",
+        // account_credited = funds arriving (deposit); account_debited = funds leaving (withdrawal)
+        type: op.type === 'account_credited' ? "deposit" : "withdrawal",
         date: new Date(op.created_at)
       }))
       .slice(0, MIN_TX_REQUIRED); // Leemos exactamente las últimas 30 transacciones relevantes
@@ -118,8 +119,8 @@ export default async function handler(req, res) {
 
   try {
     const history = await getCleanHistory(address);
-    // Usamos el balance actual que viene del contrato (totalDeposited)
-    const result = computeFinancialReputation(history, Number(totalDeposited) || 0);
+    // Clamp to 0: negative values would invert retentionRate and corrupt the score
+    const result = computeFinancialReputation(history, Math.max(0, Number(totalDeposited) || 0));
     
     return res.status(200).json(result);
   } catch (error) {
