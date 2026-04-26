@@ -1,27 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+import { walletAdapter } from "@/wallet";
 
 export const useWallet = () => {
   const [wallet, setWallet] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Leer la wallet guardada durante el login
-    const savedWallet = localStorage.getItem('vinculo_wallet');
-    if (savedWallet) {
-      setWallet(savedWallet);
-    }
+    const address = walletAdapter.getAddress();
+    setWallet(address);
+    setLoading(false);
   }, []);
 
-  // Función para formatear la llave (ej: GDAH...J5W) para que se vea bonita
-  const shortWallet = wallet 
-    ? `${wallet.substring(0, 5)}...${wallet.substring(wallet.length - 4)}` 
-    : '';
-
-  // Función para cerrar sesión
-  const disconnect = () => {
-    localStorage.removeItem('vinculo_wallet');
-    localStorage.removeItem('vinculo_onboarded');
-    window.location.href = '/login';
+  const setWalletAddress = (address: string) => {
+    localStorage.setItem("vinculo_wallet", address);
+    setWallet(address);
   };
 
-  return { wallet, shortWallet, disconnect };
+  const shortWallet = wallet
+    ? `${wallet.substring(0, 5)}...${wallet.substring(wallet.length - 4)}`
+    : "";
+
+  const disconnect = () => walletAdapter.disconnect();
+
+  return { wallet, loading, setWalletAddress, shortWallet, disconnect };
 };

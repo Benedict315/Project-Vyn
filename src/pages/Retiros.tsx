@@ -4,7 +4,7 @@ import {
   X, Lock, TrendingUp, Clock, Sparkles, Unlock
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { walletAdapter } from "@/wallet";
 import confetti from "canvas-confetti";
 import BottomNav from "@/components/BottomNav";
 import logoVin from "@/assets/logo-vin.png";
@@ -46,9 +46,9 @@ const Retiros = () => {
   useEffect(() => {
     const initWallet = async () => {
       try {
-        if (await isConnected()) {
-          const access = await requestAccess();
-          if (access.address) setWalletAddress(access.address);
+        if (await walletAdapter.isConnected()) {
+          const address = await walletAdapter.connect();
+          if (address) setWalletAddress(address);
         }
       } catch (error) { console.error("Error conectando Freighter:", error); }
     };
@@ -111,23 +111,22 @@ const Retiros = () => {
   const processContractCall = async (functionName: string, args: any[], successStep: any) => {
     try {
       const server = new rpc.Server(RPC_URL);
-      const connected = await isConnected();
+      const connected = await walletAdapter.isConnected();
       if (!connected) throw new Error("Instala Freighter");
 
-      const accessResult = await requestAccess();
-      if (accessResult.error || !accessResult.address) throw new Error("Acceso denegado");
+      const address = await walletAdapter.connect();
+      if (!address) throw new Error("Acceso denegado");
       
-      const account = await server.getAccount(accessResult.address);
+      const account = await server.getAccount(address);
       
       let transaction = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
         .addOperation(Operation.invokeContractFunction({ contract: CONTRACT_ID, function: functionName, args }))
         .setTimeout(30).build();
 
       transaction = await server.prepareTransaction(transaction);
-      const signResult = await signTransaction(transaction.toXDR(), { networkPassphrase: Networks.TESTNET });
-      if (signResult.error || !signResult.signedTxXdr) throw new Error("Firma rechazada");
+      const signedXdr = await walletAdapter.sign(transaction.toXDR(), Networks.TESTNET);
 
-      const txToSubmit = TransactionBuilder.fromXDR(signResult.signedTxXdr, Networks.TESTNET);
+      const txToSubmit = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
       const submitRes = await server.sendTransaction(txToSubmit) as any;
       const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
       if (currentStatus !== "PENDING" && currentStatus !== "SUCCESS") throw new Error("Rechazada por la red");

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { isConnected, requestAccess } from "@stellar/freighter-api";
+import { walletAdapter } from "@/wallet";
 import { fetchContractBalance } from "../stellar/queries"; 
 import { Wallet, RefreshCw } from "lucide-react";
 
@@ -14,13 +14,9 @@ const BalanceCard = () => {
   useEffect(() => {
     const initWallet = async () => {
       try {
-        if (await isConnected()) {
-          const access = await requestAccess();
-          if (access.address) {
-            setWalletAddress(access.address);
-          } else {
-            setRealBalance(0);
-          }
+        if (await walletAdapter.isConnected()) {
+          const address = await walletAdapter.connect();
+          setWalletAddress(address);
         } else {
           setRealBalance(0);
         }
