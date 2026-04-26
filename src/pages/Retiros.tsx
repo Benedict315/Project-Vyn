@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   ArrowDownToLine, Fingerprint, CheckCircle2,
-  X, Lock, TrendingUp, Clock, Sparkles, Unlock
+  X, Lock, TrendingUp, Clock, Sparkles, Unlock, Smartphone
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import confetti from "canvas-confetti";
 import BottomNav from "@/components/BottomNav";
 import logoVin from "@/assets/logo-vin.png";
+import { useMobileWallet } from "@/hooks/useMobileWallet";
 
 import { TransactionBuilder, Networks, Operation, BASE_FEE, nativeToScVal, rpc } from "@stellar/stellar-sdk";
 import { CONTRACT_ID, RPC_URL } from "@/stellar/contracts";
@@ -22,7 +22,8 @@ const STAKING_OPTIONS = [
 
 const Retiros = () => {
   const { addWithdrawal } = useApp();
-  
+  const { isMobile, provider, connect, sign } = useMobileWallet();
+
   const [realBalance, setRealBalance] = useState<number>(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   
@@ -46,13 +47,18 @@ const Retiros = () => {
   useEffect(() => {
     const initWallet = async () => {
       try {
-        if (await isConnected()) {
-          const access = await requestAccess();
-          if (access.address) setWalletAddress(access.address);
+        // Prefer saved wallet from localStorage to avoid prompting on page load
+        const saved = localStorage.getItem("vinculo_wallet");
+        if (saved) {
+          setWalletAddress(saved);
+        } else {
+          const result = await connect();
+          if (result.ok) setWalletAddress(result.address);
         }
-      } catch (error) { console.error("Error conectando Freighter:", error); }
+      } catch (error) { console.error("Error inicializando wallet:", error); }
     };
     initWallet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = useCallback(async (address: string) => {
@@ -111,27 +117,46 @@ const Retiros = () => {
   const processContractCall = async (functionName: string, args: any[], successStep: any) => {
     try {
       const server = new rpc.Server(RPC_URL);
-      const connected = await isConnected();
-      if (!connected) throw new Error("Instala Freighter");
 
-      const accessResult = await requestAccess();
-      if (accessResult.error || !accessResult.address) throw new Error("Acceso denegado");
-      
-      const account = await server.getAccount(accessResult.address);
-      
+      // Resolve wallet address — prefer cached, otherwise prompt
+      let sourceAddress = walletAddress;
+      if (!sourceAddress) {
+        const connectResult = await connect();
+        if (!connectResult.ok) {
+          const msg = connectResult.cancelled
+            ? "Conexión cancelada. Intenta de nuevo."
+            : connectResult.error;
+          throw new Error(msg);
+        }
+        sourceAddress = connectResult.address;
+        setWalletAddress(sourceAddress);
+      }
+
+      const account = await server.getAccount(sourceAddress);
+
       let transaction = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
         .addOperation(Operation.invokeContractFunction({ contract: CONTRACT_ID, function: functionName, args }))
         .setTimeout(30).build();
 
       transaction = await server.prepareTransaction(transaction);
-      const signResult = await signTransaction(transaction.toXDR(), { networkPassphrase: Networks.TESTNET });
-      if (signResult.error || !signResult.signedTxXdr) throw new Error("Firma rechazada");
 
-      const txToSubmit = TransactionBuilder.fromXDR(signResult.signedTxXdr, Networks.TESTNET);
+      // Sign via the correct provider (Freighter desktop / Albedo mobile)
+      const signResult = await sign(transaction.toXDR());
+      if (!signResult.ok) {
+        const msg = signResult.cancelled
+          ? "Firma cancelada. Puedes intentarlo de nuevo."
+          : signResult.error;
+        throw new Error(msg);
+      }
+
+      const txToSubmit = TransactionBuilder.fromXDR(signResult.signedXdr, Networks.TESTNET);
       const submitRes = await server.sendTransaction(txToSubmit) as any;
-      const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
-      if (currentStatus !== "PENDING" && currentStatus !== "SUCCESS") throw new Error("Rechazada por la red");
+      const currentStatus = (submitRes.status ?? "").toUpperCase();
+      if (currentStatus !== "PENDING" && currentStatus !== "SUCCESS") {
+        throw new Error("Transacción rechazada por la red.");
+      }
 
+      // Poll until final status
       let txStatus = currentStatus;
       while (txStatus === "PENDING" || txStatus === "NOT_FOUND") {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -141,17 +166,15 @@ const Retiros = () => {
 
       if (txStatus === "SUCCESS") {
         if (walletAddress) loadData(walletAddress);
-        
         if (functionName === "withdraw") {
           addWithdrawal(parseFloat(amount), submitRes.hash);
           setStep("success");
         } else {
           setStakeStep(successStep);
         }
-        
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.65 } });
       } else {
-        throw new Error("Transacción fallida en el contrato");
+        throw new Error("Transacción fallida en el contrato.");
       }
     } catch (err: any) {
       console.error(err);
@@ -335,7 +358,15 @@ const Retiros = () => {
             )}
             
             {step === "signing" && (
-              <div className="flex flex-col items-center py-10"><Fingerprint className="w-12 h-12 text-primary animate-pulse mb-4" /><p className="font-bold">Procesando...</p></div>
+              <div className="flex flex-col items-center py-10">
+                {isMobile
+                  ? <Smartphone className="w-12 h-12 text-primary animate-pulse mb-4" />
+                  : <Fingerprint className="w-12 h-12 text-primary animate-pulse mb-4" />}
+                <p className="font-bold">Procesando...</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isMobile ? `Aprueba en ${provider === "albedo" ? "Albedo" : "tu wallet"}` : "Confirma en Freighter"}
+                </p>
+              </div>
             )}
             
             {step === "success" && (
@@ -370,9 +401,13 @@ const Retiros = () => {
 
             {(stakeStep === "signing" || stakeStep === "unstaking") && (
               <div className="flex flex-col items-center py-10">
-                <Lock className="w-12 h-12 text-accent animate-pulse mb-4" />
+                {isMobile
+                  ? <Smartphone className="w-12 h-12 text-accent animate-pulse mb-4" />
+                  : <Lock className="w-12 h-12 text-accent animate-pulse mb-4" />}
                 <p className="font-bold">Procesando en Soroban...</p>
-                <p className="text-xs text-muted-foreground mt-2">Confirma en Freighter</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {isMobile ? `Aprueba en ${provider === "albedo" ? "Albedo" : "tu wallet"}` : "Confirma en Freighter"}
+                </p>
               </div>
             )}
 

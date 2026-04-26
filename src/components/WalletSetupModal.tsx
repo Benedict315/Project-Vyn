@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Wallet, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { requestAccess, isConnected } from "@stellar/freighter-api";
+import { Wallet, Loader2, CheckCircle2, AlertCircle, Smartphone, ExternalLink } from "lucide-react";
+import { useMobileWallet } from "@/hooks/useMobileWallet";
 
 interface WalletSetupModalProps {
   onComplete: () => void;
@@ -10,43 +10,40 @@ interface WalletSetupModalProps {
 
 const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
   const { user } = useAuth();
+  const { isMobile, isFreighterReady, connect } = useMobileWallet();
+
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
+  const [walletProvider, setWalletProvider] = useState<"freighter" | "albedo" | null>(null);
 
   const handleConnect = async () => {
     setConnecting(true);
     setError(null);
 
-    try {
-      const connected = await isConnected();
-      if (!connected) {
-        setError("Freighter no está instalado. Instálalo desde freighter.app");
-        setConnecting(false);
-        return;
-      }
-
-      const accessObj = await requestAccess();
-
-      if (accessObj.error) {
-        setError("Conexión rechazada. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
-      const publicKey = accessObj.address;
-      if (!publicKey) {
-        setError("No se pudo obtener la dirección. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
-      setAddress(publicKey);
-    } catch {
-      setError("Error al conectar con Freighter. ¿Está instalada la extensión?");
+    // On desktop without Freighter, guide user before attempting
+    if (!isMobile && !isFreighterReady) {
+      setError("Freighter no está instalado. Instálalo desde freighter.app o usa Albedo.");
+      setConnecting(false);
+      return;
     }
+
+    const result = await connect();
+
+    if (!result.ok) {
+      setError(
+        result.cancelled
+          ? "Conexión cancelada. Puedes intentarlo de nuevo."
+          : result.error
+      );
+      setConnecting(false);
+      return;
+    }
+
+    setAddress(result.address);
+    setWalletProvider(result.provider);
     setConnecting(false);
   };
 
@@ -66,12 +63,20 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
       return;
     }
 
+    // Persist provider choice for future signing
+    if (walletProvider) {
+      localStorage.setItem("vinculo_wallet_provider", walletProvider);
+    }
+    localStorage.setItem("vinculo_wallet", address);
+
     setDone(true);
     setTimeout(onComplete, 1200);
   };
 
   const truncate = (addr: string) =>
     addr.length > 16 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+
+  const providerLabel = isMobile ? "Albedo" : isFreighterReady ? "Freighter" : "Albedo";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm px-6">
@@ -88,11 +93,13 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
           <>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-primary" />
+                {isMobile ? <Smartphone className="w-5 h-5 text-primary" /> : <Wallet className="w-5 h-5 text-primary" />}
               </div>
               <div>
                 <h2 className="text-lg font-bold text-foreground leading-tight">Conecta tu wallet</h2>
-                <p className="text-xs text-muted-foreground">Usa la extensión Freighter</p>
+                <p className="text-xs text-muted-foreground">
+                  {isMobile ? "Vía Albedo (web wallet)" : `Vía ${providerLabel}`}
+                </p>
               </div>
             </div>
 
@@ -100,6 +107,11 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               <div className="bg-secondary rounded-xl px-4 py-3">
                 <p className="text-xs text-muted-foreground mb-0.5">Dirección Stellar</p>
                 <p className="text-sm font-mono font-medium text-foreground">{truncate(address)}</p>
+                {walletProvider && (
+                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">
+                    via {walletProvider}
+                  </p>
+                )}
               </div>
             ) : (
               <button
@@ -113,10 +125,14 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   <Wallet className="w-6 h-6 text-primary" />
                 )}
                 <span className="text-sm font-semibold text-foreground">
-                  {connecting ? "Conectando..." : "Conectar Freighter"}
+                  {connecting ? "Conectando..." : `Conectar con ${providerLabel}`}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Se abrirá la extensión del navegador
+                  {isMobile
+                    ? "Se abrirá Albedo en tu navegador"
+                    : isFreighterReady
+                    ? "Se abrirá la extensión Freighter"
+                    : "Se abrirá Albedo (no requiere extensión)"}
                 </span>
               </button>
             )}
@@ -146,14 +162,17 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               )}
             </div>
 
-            <a
-              href="https://www.freighter.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-center text-xs text-primary hover:underline"
-            >
-              ¿No tienes Freighter? Descárgala aquí →
-            </a>
+            {!isMobile && (
+              <a
+                href="https://www.freighter.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" />
+                ¿No tienes Freighter? Descárgala aquí
+              </a>
+            )}
           </>
         )}
       </div>
