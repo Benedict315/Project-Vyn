@@ -25,9 +25,13 @@ export function isMobileBrowser(): boolean {
   );
 }
 
-export function isFreighterAvailable(): boolean {
-  // window.freighter is injected by the extension; on mobile it will never exist
-  return typeof window !== "undefined" && !!(window as any).freighter;
+export async function isFreighterAvailable(): Promise<boolean> {
+  try {
+    const result = await FreighterAPI.isConnected();
+    return typeof result === "object" ? result.isConnected : Boolean(result);
+  } catch {
+    return false;
+  }
 }
 
 // ─── Unified result types ─────────────────────────────────────────────────────
@@ -43,7 +47,7 @@ export type SignResult =
 // ─── Connect (get public key) ─────────────────────────────────────────────────
 
 export async function connectWallet(): Promise<ConnectResult> {
-  if (!isMobileBrowser() && isFreighterAvailable()) {
+  if (!isMobileBrowser() && await isFreighterAvailable()) {
     return connectFreighter();
   }
   return connectAlbedo();

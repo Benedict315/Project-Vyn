@@ -32,16 +32,16 @@ export function useMobileWallet() {
   useEffect(() => {
     if (isMobile) return;
 
-    const check = () => {
-      const available = isFreighterAvailable();
+    const check = async () => {
+      const available = await isFreighterAvailable();
       setFreighterReady(available);
-      // If extension just appeared and user hasn't explicitly chosen albedo, switch
-      if (available && getSavedProvider() !== "albedo") {
+      // On desktop, Freighter wins whenever it is available.
+      if (available) {
         setProvider("freighter");
       }
     };
 
-    check();
+    void check();
     const id = setInterval(check, 1000);
     return () => clearInterval(id);
   }, [isMobile]);
