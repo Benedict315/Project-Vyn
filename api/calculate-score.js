@@ -93,43 +93,50 @@ async function getCleanHistory(userAddress) {
 
     const MIN_AMOUNT = 0.1; // aceptar micropagos menores en testnet
 
-    const parsedFromEffects = (effects || []).map(op => {
-      const amount = op.amount !== undefined ? parseFloat(op.amount) : 0;
-      const type = (op.type === 'account_credited' || op.type === 'account_debited')
-        ? (op.type === 'account_credited' ? 'deposit' : 'withdrawal')
-        : op.type;
-      return { amount, type, date: new Date(op.created_at) };
-    });
+    const debitEffects = (effects || [])
+      .filter((effect) => effect.type === 'account_debited')
+      .map((effect) => ({
+        amount: effect.amount !== undefined ? parseFloat(effect.amount) : 0,
+        date: effect.created_at ? new Date(effect.created_at) : new Date(),
+        used: false,
+      }))
+      .filter((effect) => effect.amount > 0);
 
-    const parsedFromOps = (ops || []).map(op => {
-      // operations often have 'amount' for payments
-      const amount = op.amount !== undefined ? parseFloat(op.amount) : 0;
-      const type = op.type || 'operation';
-      return { amount, type, date: new Date(op.created_at) };
-    });
+    const isSorobanInvocation = (type) =>
+      type === 'invoke_host_function' ||
+      type === 'invoke_contract_function' ||
+      type === 'invokeContractFunction' ||
+      type === 'invoke_contract';
 
-    // Merge and sort by date desc. Use string key to dedupe similar entries.
-    const merged = [...parsedFromEffects, ...parsedFromOps]
-      .map((r) => ({ ...r, key: `${r.type}:${r.date.toISOString()}:${r.amount}` }))
-      .reduce((acc, cur) => {
-        if (!acc.find(x => x.key === cur.key)) acc.push(cur);
-        return acc;
-      }, [])
-      .sort((a, b) => b.date - a.date);
+    const parsedFromOps = (ops || [])
+      .filter((op) => isSorobanInvocation(op.type))
+      .map((op) => {
+        const opDate = op.created_at ? new Date(op.created_at) : new Date();
+        const matchIndex = debitEffects.findIndex((effect) => {
+          if (effect.used) return false;
+          const diffMs = Math.abs(opDate.getTime() - effect.date.getTime());
+          return diffMs <= 5 * 60 * 1000;
+        });
 
-    // Filter: accept entries with amount >= MIN_AMOUNT or invoke_host_function/activity entries
-    const filtered = merged.filter(r => {
-      if (r.amount && r.amount >= MIN_AMOUNT) return true;
-      // Count contract interactions as activity (they may not include amount)
-      if (r.type && (r.type === 'invoke_host_function' || r.type === 'operation' || r.type === 'account_created')) return true;
-      return false;
-    }).slice(0, MIN_TX_REQUIRED);
+        const matched = matchIndex >= 0 ? debitEffects[matchIndex] : null;
+        if (matched) matched.used = true;
 
-    // Map to expected shape
-    return filtered.map(r => ({
-      amount: r.amount || 0,
-      type: r.type === 'account_credited' || r.type === 'deposit' ? 'deposit' : 'withdrawal',
-      date: r.date
+        return {
+          amount: matched?.amount || 0,
+          type: 'deposit',
+          date: matched?.date || opDate,
+        };
+      });
+
+    const filtered = parsedFromOps
+      .filter((r) => r.amount && r.amount >= MIN_AMOUNT)
+      .sort((a, b) => b.date - a.date)
+      .slice(0, MIN_TX_REQUIRED);
+
+    return filtered.map((r) => ({
+      amount: r.amount,
+      type: 'deposit',
+      date: r.date,
     }));
   } catch (e) {
     return [];

@@ -9,9 +9,7 @@ import WalletSetupModal from "@/components/WalletSetupModal";
 import NFTModal from "@/components/NFTModal";
 import logoVin from "@/assets/logo-vin.png";
 import { toast } from "@/hooks/use-toast";
-import { requestAccess, signTransaction } from "@stellar/freighter-api";
-import { rpc, TransactionBuilder, Networks, Operation, BASE_FEE } from "@stellar/stellar-sdk";
-import { RPC_URL } from "@/stellar/contracts";
+import { requestAccess } from "@stellar/freighter-api";
 
 const Perfil = () => {
   const navigate = useNavigate();
@@ -239,37 +237,9 @@ const Perfil = () => {
     if (!walletAddress) return;
     setIsMinting(true);
     try {
-      // 1) Pedimos un nonce al servidor
-      const nonceRes = await fetch(`/api/nonce`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: walletAddress })
-      });
-      const nonceData = await nonceRes.json();
-      if (!nonceData?.nonce) throw new Error("No se obtuvo nonce");
-
-      // 2) Pedimos acceso a Freighter y firmamos una transacción de ManageData con el nonce
+      // 1) Solo validamos que la wallet conectada sea la misma en Freighter.
       const access = await requestAccess();
       if (!access?.address || access.address !== walletAddress) throw new Error("Conecta la misma wallet en Freighter");
-
-      const server = new rpc.Server(RPC_URL);
-      const account = await server.getAccount(walletAddress);
-
-      const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
-        .addOperation(
-          Operation.manageData({ name: 'vinculo_nonce', value: nonceData.nonce })
-        )
-        .setTimeout(30)
-        .build();
-
-      // NOTE: avoid server.prepareTransaction with the Soroban RPC here because
-      // it rejects ManageData ops. Use the raw XDR from the built transaction
-      // so Freighter can sign the ManageData nonce operation.
-      const txXdr = tx.toXDR();
-      const signResponse = await signTransaction(txXdr, { networkPassphrase: Networks.TESTNET });
-      if (signResponse.error || !signResponse.signedTxXdr) {
-        throw new Error("Firma cancelada en Freighter");
-      }
 
       const response = await fetch(`/api/evaluate-and-mint`, {
         method: "POST",
@@ -278,12 +248,16 @@ const Perfil = () => {
           userAddress: walletAddress, 
           totalVolume: Number(onChainXLM),
           depositCount: Number(onChainXLM) > 0 ? 1 : 0,
-          deposits: [{ amount: Number(onChainXLM), daysAgo: 0 }],
-          signedTxXdr: signResponse.signedTxXdr,
-          nonce: nonceData.nonce
+          deposits: [{ amount: Number(onChainXLM), daysAgo: 0 }]
         })
       });
-      const data = await response.json();
+      const raw = await response.text();
+      let data: any;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        throw new Error(raw || "Respuesta no valida del servidor");
+      }
       if (response.ok && data.status === "minted") {
         const mintedLevel = data.tierName || nftTier;
         const mintedTier = Number(data.tier) || 0;

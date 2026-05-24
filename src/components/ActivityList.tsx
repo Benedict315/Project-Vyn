@@ -24,33 +24,53 @@ const ActivityList = () => {
 
     const fetchHistory = async () => {
       try {
-        // Consultamos los "Efectos" en la cuenta, no las operaciones. 
-        // Esto nos da los montos exactos de XLM que entraron o salieron.
-        const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${walletAddress}/effects?limit=50&order=desc`);
-        
-        if (!res.ok) throw new Error("Error leyendo Horizon");
-        
-        const data = await res.json();
+        const [effectsRes, opsRes] = await Promise.all([
+          fetch(`https://horizon-testnet.stellar.org/accounts/${walletAddress}/effects?limit=100&order=desc`),
+          fetch(`https://horizon-testnet.stellar.org/accounts/${walletAddress}/operations?limit=100&order=desc`)
+        ]);
 
-        const parsedMovements: Movement[] = data._embedded.records
-          .filter((effect: any) => 
-            // Filtramos solo entradas y salidas de dinero
-            (effect.type === "account_debited" || effect.type === "account_credited") &&
-            // Ignoramos las comisiones de red (gas) que suelen ser menores a 0.05 XLM
-            parseFloat(effect.amount) > 0.05 
-          )
-          .map((effect: any) => {
-            // Si la cuenta fue debitada, el dinero fue al contrato (Ahorro/Depósito)
-            const isDeposit = effect.type === "account_debited";
+        if (!effectsRes.ok || !opsRes.ok) throw new Error("Error leyendo Horizon");
+
+        const effectsData = await effectsRes.json();
+        const opsData = await opsRes.json();
+
+        const debitEffects = (effectsData._embedded.records || [])
+          .filter((effect: any) => effect.type === "account_debited")
+          .map((effect: any) => ({
+            amount: effect.amount !== undefined ? parseFloat(effect.amount) : 0,
+            date: effect.created_at ? new Date(effect.created_at) : new Date(),
+            used: false,
+          }))
+          .filter((effect: any) => effect.amount > 0.05);
+
+        const isSorobanInvocation = (type: string) =>
+          type === "invoke_host_function" ||
+          type === "invoke_contract_function" ||
+          type === "invokeContractFunction" ||
+          type === "invoke_contract";
+
+        const parsedMovements: Movement[] = (opsData._embedded.records || [])
+          .filter((op: any) => isSorobanInvocation(op.type))
+          .map((op: any) => {
+            const opDate = op.created_at ? new Date(op.created_at) : new Date();
+            const matchIndex = debitEffects.findIndex((effect: any) => {
+              if (effect.used) return false;
+              const diffMs = Math.abs(opDate.getTime() - effect.date.getTime());
+              return diffMs <= 5 * 60 * 1000;
+            });
+
+            const matched = matchIndex >= 0 ? debitEffects[matchIndex] : null;
+            if (matched) matched.used = true;
 
             return {
-              id: effect.id,
-              type: isDeposit ? "deposit" : "withdrawal",
-              label: isDeposit ? "Depósito a Vínculo" : "Retiro de Crédito",
-              amount: parseFloat(effect.amount).toFixed(2),
-              date: new Date(effect.created_at),
+              id: op.id || op.transaction_hash,
+              type: "deposit",
+              label: "Depósito a Vínculo",
+              amount: (matched?.amount || 0).toFixed(2),
+              date: matched?.date || opDate,
             };
-          });
+          })
+          .filter((movement: Movement) => Number(movement.amount) > 0.05);
 
         // Guardamos solo los últimos 10 movimientos como pediste
         setMovements(parsedMovements.slice(0, 5));

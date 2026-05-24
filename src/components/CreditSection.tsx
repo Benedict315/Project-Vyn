@@ -15,9 +15,21 @@ import {
 } from "@stellar/stellar-sdk";
 import { requestAccess, signTransaction } from "@stellar/freighter-api";
 
-const LENDING_CONTRACT_ID =
-  import.meta.env.VITE_LENDING_CONTRACT_ID ||
-  "CDNF6NGNB7RG7QLZYPMWROVSV3VRVWX2FRZQTNT3Y2GRBNWJP3GEBONV";
+const getLendingContractId = () => {
+  const contractId = import.meta.env.VITE_LENDING_CONTRACT_ID?.trim();
+
+  if (!contractId) {
+    throw new Error("Falta configurar VITE_LENDING_CONTRACT_ID");
+  }
+
+  try {
+    new Contract(contractId);
+  } catch {
+    throw new Error("VITE_LENDING_CONTRACT_ID no es un contract ID válido");
+  }
+
+  return contractId;
+};
 
 const CreditSection = () => {
   const { creditWithdrawn, withdrawCredit, deposits } = useApp();
@@ -155,11 +167,12 @@ const CreditSection = () => {
 
       const server = new rpc.Server("https://soroban-testnet.stellar.org");
       const networkPassphrase = Networks.TESTNET;
+      const lendingContractId = getLendingContractId();
 
       const amountInStroops = BigInt(creditData.limit) * BigInt(10_000_000);
       const months = 1; 
 
-      const contract = new Contract(LENDING_CONTRACT_ID);
+      const contract = new Contract(lendingContractId);
       const operation = contract.call(
         "request_loan",
         new Address(userAddress).toScVal(),
@@ -214,11 +227,12 @@ const CreditSection = () => {
 
       const server = new rpc.Server("https://soroban-testnet.stellar.org");
       const networkPassphrase = Networks.TESTNET;
+      const lendingContractId = getLendingContractId();
 
       // Usamos el totalToPay para cubrir el principal + 5%
       const amountToRepay = BigInt(Math.ceil(totalToPay * 10_000_000));
 
-      const contract = new Contract(LENDING_CONTRACT_ID);
+      const contract = new Contract(lendingContractId);
       const operation = contract.call(
         "repay",
         new Address(userAddress).toScVal(),
