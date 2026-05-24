@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Fingerprint, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { walletAdapter } from "@/wallet";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -88,15 +88,12 @@ const DepositModal = ({ open, onClose }: Props) => {
     try {
       // 1. Inicializar Servidor RPC y verificar conexión
       const server = new rpc.Server(RPC_URL);
-      const connected = await isConnected();
+      const connected = await walletAdapter.isConnected();
       if (!connected) throw new Error("Instala Freighter para continuar");
 
-      const accessResult = await requestAccess();
-      if (accessResult.error || !accessResult.address) throw new Error("Acceso denegado");
-      
-      const sourcePublicKey = accessResult.address;
+      const sourcePublicKey = await walletAdapter.connect();
 
-      // 🛡️ NUEVO CANDADO DE SEGURIDAD
+      // 🛡️ CANDADO DE SEGURIDAD
       if (registeredWallet && sourcePublicKey !== registeredWallet) {
         const shortWallet = `${registeredWallet.substring(0, 4)}...${registeredWallet.substring(52)}`;
         throw new Error(`Cuenta incorrecta en Freighter. Por favor cambia a tu cuenta registrada: ${shortWallet}`);
@@ -126,26 +123,19 @@ const DepositModal = ({ open, onClose }: Props) => {
       // 3. Preparar la transacción (Calcula footprint y gas para Soroban)
       transaction = await server.prepareTransaction(transaction);
 
-      // 4. Firmar con Freighter
-      const signResult = await signTransaction(transaction.toXDR(), {
-        networkPassphrase: Networks.TESTNET,
-      });
+      // 4. Firmar con el adaptador
+      const signedXdr = await walletAdapter.sign(transaction.toXDR(), Networks.TESTNET);
 
-      if (signResult.error || !signResult.signedTxXdr) {
-        throw new Error("Firma rechazada por el usuario");
-      }
-
-      // 5. Enviar a la red (Usamos as any para evitar errores estrictos de TS)
-      const transactionToSubmit = TransactionBuilder.fromXDR(signResult.signedTxXdr, Networks.TESTNET);
+      // 5. Enviar a la red
+      const transactionToSubmit = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
       const submitRes = await server.sendTransaction(transactionToSubmit) as any;
 
-      // 6. Validar estado (Convertimos a mayúsculas para evitar el error anterior)
+      // 6. Validar estado
       const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
 
       if (currentStatus === "PENDING" || currentStatus === "SUCCESS") {
         setTxHash(submitRes.hash);
         
-        // Actualizamos el estado local de la app
         const wasLocked = !isUnlocked;
         const willUnlock = depositsCount + 1 >= requiredDeposits;
         addDeposit(val);

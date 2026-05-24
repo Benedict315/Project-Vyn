@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Wallet, AlertCircle, ExternalLink } from "lucide-react";
 import logoVin from "@/assets/logo-vin.png";
-import * as FreighterAPI from "@stellar/freighter-api"; 
+import { walletAdapter } from "@/wallet";
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
@@ -13,8 +13,7 @@ const Login = () => {
   useEffect(() => {
     const checkExtension = async () => {
       try {
-        const { isConnected } = await FreighterAPI.isConnected();
-        if (isConnected) {
+        if (await walletAdapter.isConnected()) {
           setIsExtensionInstalled(true);
         }
       } catch (e) {
@@ -34,27 +33,12 @@ const Login = () => {
     setError(null);
 
     try {
-      // Método oficial y directo para PC
-      const response = await FreighterAPI.requestAccess();
-      
-      if (response.error) {
-        throw new Error(response.error);
-      }
-
-      if (response.address) {
-        localStorage.setItem("vinculo_wallet", response.address);
-        localStorage.setItem("vinculo_onboarded", "1");
-        
-        // Pequeño tiempo de gracia para que React Router o el navegador asimilen el cambio
-        setTimeout(() => { window.location.href = "/"; }, 200);
-      } else {
-        throw new Error("No se obtuvo la llave pública.");
-      }
+      const address = await walletAdapter.connect();
+      localStorage.setItem("vinculo_onboarded", "1");
+      setTimeout(() => { window.location.href = "/"; }, 200);
     } catch (err: any) {
       setLoading(false);
       const msg = err.message || "";
-      
-      // Manejo de rechazos del usuario vs errores técnicos
       if (msg.includes("User declined") || msg.includes("User rejected")) {
         setError("Conexión rechazada. Debes aprobar la solicitud en Freighter.");
       } else {

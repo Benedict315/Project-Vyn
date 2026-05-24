@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Wallet, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { requestAccess, isConnected } from "@stellar/freighter-api";
+import { walletAdapter } from "@/wallet";
 
 interface WalletSetupModalProps {
   onComplete: () => void;
@@ -21,31 +21,17 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
     setError(null);
 
     try {
-      const connected = await isConnected();
+      const connected = await walletAdapter.isConnected();
       if (!connected) {
         setError("Freighter no está instalado. Instálalo desde freighter.app");
         setConnecting(false);
         return;
       }
 
-      const accessObj = await requestAccess();
-
-      if (accessObj.error) {
-        setError("Conexión rechazada. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
-      const publicKey = accessObj.address;
-      if (!publicKey) {
-        setError("No se pudo obtener la dirección. Intenta de nuevo.");
-        setConnecting(false);
-        return;
-      }
-
+      const publicKey = await walletAdapter.connect();
       setAddress(publicKey);
-    } catch {
-      setError("Error al conectar con Freighter. ¿Está instalada la extensión?");
+    } catch (err: any) {
+      setError(err.message || "Error al conectar con Freighter. ¿Está instalada la extensión?");
     }
     setConnecting(false);
   };

@@ -13,7 +13,7 @@ import {
   nativeToScVal, 
   TransactionBuilder 
 } from "@stellar/stellar-sdk";
-import { requestAccess, signTransaction } from "@stellar/freighter-api";
+import { walletAdapter } from "@/wallet";
 
 const getLendingContractId = () => {
   const contractId = import.meta.env.VITE_LENDING_CONTRACT_ID?.trim();
@@ -155,8 +155,7 @@ const CreditSection = () => {
     setLoadingTx(true);
     setErrorMsg(null); // Limpiamos errores previos
     try {
-      const accessResponse = await requestAccess();
-      const userAddress = accessResponse.address;
+      const userAddress = await walletAdapter.connect();
       if (!userAddress) throw new Error("Debes conectar tu billetera Freighter");
 
       // 🛡️ CANDADO: Validamos que use la cuenta correcta
@@ -187,13 +186,9 @@ const CreditSection = () => {
         .build();
 
       const preparedTx = await server.prepareTransaction(tx);
-      const signResponse = await signTransaction(preparedTx.toXDR(), { networkPassphrase });
+      const signedXdr = await walletAdapter.sign(preparedTx.toXDR(), networkPassphrase);
       
-      if (signResponse.error || !signResponse.signedTxXdr) {
-         throw new Error("Transacción cancelada en Freighter.");
-      }
-
-      const signedTx = TransactionBuilder.fromXDR(signResponse.signedTxXdr, networkPassphrase);
+      const signedTx = TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
       await server.sendTransaction(signedTx);
       
       // Reiniciamos los estados del timer
@@ -215,8 +210,7 @@ const CreditSection = () => {
     setLoadingTx(true);
     setErrorMsg(null); // Limpiamos errores previos
     try {
-      const accessResponse = await requestAccess();
-      const userAddress = accessResponse.address;
+      const userAddress = await walletAdapter.connect();
       if (!userAddress) throw new Error("Debes conectar tu billetera Freighter");
 
       // 🛡️ CANDADO: Validamos que use la cuenta correcta para pagar
@@ -246,13 +240,9 @@ const CreditSection = () => {
         .build();
 
       const preparedTx = await server.prepareTransaction(tx);
-      const signResponse = await signTransaction(preparedTx.toXDR(), { networkPassphrase });
+      const signedXdr = await walletAdapter.sign(preparedTx.toXDR(), networkPassphrase);
       
-      if (signResponse.error || !signResponse.signedTxXdr) {
-         throw new Error("Transacción cancelada en Freighter.");
-      }
-
-      const signedTx = TransactionBuilder.fromXDR(signResponse.signedTxXdr, networkPassphrase);
+      const signedTx = TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
       await server.sendTransaction(signedTx);
       
       window.location.reload(); 
