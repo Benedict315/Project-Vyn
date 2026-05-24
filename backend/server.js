@@ -22,6 +22,12 @@ const RPC_URL = "https://soroban-testnet.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org"; // <-- Añadido Horizon
 const server = new rpc.Server(RPC_URL);
 
+// Simple store en memoria de nonces (dev)
+const nonces = new Map();
+function generateNonce() {
+  return require('crypto').randomBytes(16).toString('hex');
+}
+
 // ─────────────────────────────────────────────
 // CONFIGURACIÓN DE CRÉDITO
 // ─────────────────────────────────────────────
@@ -32,6 +38,9 @@ const CREDIT_LIMITS = {
   3: { name: "Diamante", amount: 1500 },
   4: { name: "Platino", amount: 5000 }
 };
+
+// Umbral mínimo de transacciones para testnet (ajustable)
+const MIN_TX_REQUIRED = 3;
 
 // ─────────────────────────────────────────────
 // HELPERS MATEMÁTICOS (Tu Motor de Riesgo)
@@ -94,8 +103,8 @@ async function getUserBlockchainHistory(userAddress, totalBalance) {
       }
     });
 
-    // 3. Limitamos a los últimos 30 movimientos
-    transactionDates = transactionDates.slice(0, 30);
+    // 3. Limitamos a los últimos movimientos necesarios
+    transactionDates = transactionDates.slice(0, MIN_TX_REQUIRED);
 
     // Fallback: Si no hay historial pero hay saldo (ej. fondeo directo sin contrato)
     if (transactionDates.length === 0) {
@@ -181,6 +190,11 @@ app.post("/api/get-available-credit", async (req, res) => {
 // ─────────────────────────────────────────────
 async function mintNftOnChain(userAddress, tier) {
   try {
+    if (!process.env.SECRET_KEY_ADMIN) {
+      const msg = 'Missing SECRET_KEY_ADMIN env var';
+      console.error('[DEBUG] 💥 Error Mint:', msg);
+      return { success: false, error: msg };
+    }
     const adminKeypair = Keypair.fromSecret(process.env.SECRET_KEY_ADMIN);
     const account = await server.getAccount(adminKeypair.publicKey());
     
@@ -208,8 +222,8 @@ async function mintNftOnChain(userAddress, tier) {
     return { success: true, hash: submitRes.hash };
 
   } catch (error) {
-    console.error(`[DEBUG] 💥 Error Mint:`, error.message);
-    return { success: false, error: error.message };
+    console.error(`[DEBUG] 💥 Error Mint:`, error);
+    return { success: false, error: error.message || String(error) };
   }
 }
 
@@ -228,40 +242,127 @@ app.post("/api/calculate-score", async (req, res) => {
   const wMean = weightedMean(depositsHistory);
   const mad = meanAbsoluteDeviation(depositsHistory);
   const result = computeScoreAndTier(wMean, mad, depositsHistory.length);
-  
-  res.json(result);
+  // Añadimos información de elegibilidad para la UI (ProgressRing)
+  const eligibility = {
+    minHistoryRequired: MIN_TX_REQUIRED,
+    historyCount: depositsHistory.length,
+    isHistoryEligible: depositsHistory.length >= MIN_TX_REQUIRED,
+    remainingForUnlock: Math.max(0, MIN_TX_REQUIRED - depositsHistory.length)
+  };
+
+  const response = {
+    ...result,
+    eligibility,
+    metrics: {
+      weightedMean: wMean,
+      mad,
+      depositsCount: depositsHistory.length
+    }
+  };
+
+  res.json(response);
 });
 
 // ─────────────────────────────────────────────
-// ENDPOINT: EVALUAR Y MINTEAR 🏅
+// ENDPOINT: NONCE (DEV) — para evitar 404 desde frontend en dev
+// ─────────────────────────────────────────────
+app.post('/api/nonce', (req, res) => {
+  const { address } = req.body || {};
+  if (!address) return res.status(400).json({ error: 'address required' });
+  const nonce = generateNonce();
+  const expires = Date.now() + 5 * 60 * 1000; // 5 minutos
+  nonces.set(address, { nonce, expires });
+  return res.json({ success: true, nonce, expires });
+});
+
+function consumeNonce(address, nonce) {
+  const entry = nonces.get(address);
+  if (!entry) return false;
+  if (entry.expires < Date.now()) {
+    nonces.delete(address);
+    return false;
+  }
+  if (entry.nonce !== nonce) return false;
+  nonces.delete(address);
+  return true;
+}
+
+// ─────────────────────────────────────────────
+// ENDPOINT: EVALUATE AND MINT (DEV)
 // ─────────────────────────────────────────────
 app.post('/api/evaluate-and-mint', async (req, res) => {
-  const { userAddress, totalVolume } = req.body;
-  
-  if (!userAddress) return res.status(400).json({ error: "Falta wallet" });
+  try {
+    console.log('[DEBUG] /api/evaluate-and-mint body:', req.body);
+    const { address: maybeAddress, userAddress, signedTxXdr, nonce } = req.body || {};
+    const address = maybeAddress || userAddress;
+    if (!address) return res.status(400).json({ error: 'address required' });
 
-  // 1. Validamos usando datos reales de la blockchain antes de permitir mintear
-  const depositsHistory = await getUserBlockchainHistory(userAddress, Number(totalVolume) || 0);
-  const wMean = weightedMean(depositsHistory);
-  const mad = meanAbsoluteDeviation(depositsHistory);
-  
-  // 2. Extraemos el Nivel que las matemáticas dictan que merece
-  const { tier } = computeScoreAndTier(wMean, mad, depositsHistory.length);
-  
-  if (tier >= 1) {
-    console.log(`[DEBUG] 🚀 Autorizando minteo Nivel ${tier} para ${userAddress}`);
-    const mintResult = await mintNftOnChain(userAddress, tier);
-    
-    if (mintResult.success) {
-      return res.json({ txHash: mintResult.hash, status: "minted" });
-    } else {
-      return res.status(500).json({ message: "Error firmando transacción en Soroban", status: "failed" });
+    // Verify nonce
+    if (!consumeNonce(address, nonce)) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired nonce' });
     }
-  }
-  
-  res.json({ message: "Reputación insuficiente para este nivel", status: "pending" });
-});
 
+    // Compute eligibility using on-chain history. Prefer client-supplied totalVolume for matching score calc.
+    const totalVolume = Number(req.body.totalVolume) || 0;
+    const depositsHistory = await getUserBlockchainHistory(address, totalVolume);
+    const isHistoryEligible = depositsHistory.length >= MIN_TX_REQUIRED;
+
+    if (!isHistoryEligible) {
+      return res.json({ success: false, error: 'Not eligible by history', eligibility: { minHistoryRequired: MIN_TX_REQUIRED, historyCount: depositsHistory.length } });
+    }
+
+    // Compute tier and mint
+    const wMean = weightedMean(depositsHistory);
+    const mad = meanAbsoluteDeviation(depositsHistory);
+    console.log('[DEBUG] Computed wMean/mad/len for evaluate-and-mint:', { wMean, mad, len: depositsHistory.length });
+    const { tier, tierName } = computeScoreAndTier(wMean, mad, depositsHistory.length);
+
+    // Check current on-chain tier to avoid panics in the contract (same-level mint)
+    try {
+      if (!process.env.SECRET_KEY_ADMIN) {
+        console.warn('[DEBUG] SECRET_KEY_ADMIN not set; skipping on-chain tier check');
+      } else {
+        const adminKeypair = Keypair.fromSecret(process.env.SECRET_KEY_ADMIN);
+        const sourceAccount = await server.getAccount(adminKeypair.publicKey());
+        const checkTx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
+          .addOperation(
+            Operation.invokeContractFunction({
+              contract: process.env.NFT_CONTRACT_ID,
+              function: 'get_tier',
+              args: [nativeToScVal(address, { type: 'address' })]
+            })
+          )
+          .setTimeout(30)
+          .build();
+
+        const sim = await server.simulateTransaction(checkTx);
+        let currentTier = 0;
+        if (sim.result && sim.result.retval) {
+          currentTier = Number(scValToNative(sim.result.retval)) || 0;
+        }
+
+        if (currentTier === tier) {
+          return res.status(400).json({ success: false, message: 'Usuario ya posee este nivel exacto', tier: currentTier, tierName });
+        }
+      }
+    } catch (err) {
+      console.warn('[DEBUG] Could not read current on-chain tier:', err && err.message || err);
+      // proceed — we still try to mint, but the mint may fail with the contract panic which will be handled below
+    }
+
+    const mintRes = await mintNftOnChain(address, tier);
+    if (!mintRes.success) {
+      console.error('[DEBUG] mintNftOnChain failed:', mintRes);
+      return res.status(500).json({ success: false, error: mintRes.error });
+    }
+
+    return res.json({ status: 'minted', txHash: mintRes.hash, tier, tierName });
+  } catch (error) {
+    console.error('[DEBUG] 💥 Error en /evaluate-and-mint:', error);
+    return res.status(500).json({ success: false, error: error.message || String(error) });
+  }
+});
+// Inicia servidor
 app.listen(PORT, '0.0.0.0', () => { 
   console.log(`\n🚀 SERVIDOR VÍNCULO ACTIVO EN PUERTO ${PORT}`);
 });

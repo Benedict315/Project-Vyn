@@ -1,5 +1,6 @@
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
-const MIN_TX_REQUIRED = 30;
+// Para entornos de testnet reducimos el requisito para facilitar pruebas
+const MIN_TX_REQUIRED = 3;
 
 // --- MOTOR DE REPUTACIÓN CALIBRADO (3000 XLM = 50 PTS) ---
 function computeFinancialReputation(history, totalBalance) {
@@ -83,22 +84,53 @@ function computeFinancialReputation(history, totalBalance) {
 // --- LECTOR DE 30 REGISTROS REALES ---
 async function getCleanHistory(userAddress) {
   try {
-    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=120&order=desc`);
-    if (!response.ok) return [];
-    
-    const data = await response.json();
-    
-    return data._embedded.records
-      .filter(op => 
-        (op.type === 'account_debited' || op.type === 'account_credited') && 
-        parseFloat(op.amount) >= 1.0 // Ignoramos spam/polvo
-      )
-      .map(op => ({
-        amount: parseFloat(op.amount),
-        type: op.type === 'account_debited' ? "deposit" : "withdrawal",
-        date: new Date(op.created_at)
-      }))
-      .slice(0, MIN_TX_REQUIRED); // Leemos exactamente las últimas 30 transacciones relevantes
+    // Intentamos leer tanto effects como operations para capturar más tipos de actividad
+    const effectsRes = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=200&order=desc`);
+    const opsRes = await fetch(`${HORIZON_URL}/accounts/${userAddress}/operations?limit=200&order=desc`);
+
+    const effects = effectsRes.ok ? (await effectsRes.json())._embedded.records : [];
+    const ops = opsRes.ok ? (await opsRes.json())._embedded.records : [];
+
+    const MIN_AMOUNT = 0.1; // aceptar micropagos menores en testnet
+
+    const parsedFromEffects = (effects || []).map(op => {
+      const amount = op.amount !== undefined ? parseFloat(op.amount) : 0;
+      const type = (op.type === 'account_credited' || op.type === 'account_debited')
+        ? (op.type === 'account_credited' ? 'deposit' : 'withdrawal')
+        : op.type;
+      return { amount, type, date: new Date(op.created_at) };
+    });
+
+    const parsedFromOps = (ops || []).map(op => {
+      // operations often have 'amount' for payments
+      const amount = op.amount !== undefined ? parseFloat(op.amount) : 0;
+      const type = op.type || 'operation';
+      return { amount, type, date: new Date(op.created_at) };
+    });
+
+    // Merge and sort by date desc. Use string key to dedupe similar entries.
+    const merged = [...parsedFromEffects, ...parsedFromOps]
+      .map((r) => ({ ...r, key: `${r.type}:${r.date.toISOString()}:${r.amount}` }))
+      .reduce((acc, cur) => {
+        if (!acc.find(x => x.key === cur.key)) acc.push(cur);
+        return acc;
+      }, [])
+      .sort((a, b) => b.date - a.date);
+
+    // Filter: accept entries with amount >= MIN_AMOUNT or invoke_host_function/activity entries
+    const filtered = merged.filter(r => {
+      if (r.amount && r.amount >= MIN_AMOUNT) return true;
+      // Count contract interactions as activity (they may not include amount)
+      if (r.type && (r.type === 'invoke_host_function' || r.type === 'operation' || r.type === 'account_created')) return true;
+      return false;
+    }).slice(0, MIN_TX_REQUIRED);
+
+    // Map to expected shape
+    return filtered.map(r => ({
+      amount: r.amount || 0,
+      type: r.type === 'account_credited' || r.type === 'deposit' ? 'deposit' : 'withdrawal',
+      date: r.date
+    }));
   } catch (e) {
     return [];
   }
@@ -113,13 +145,28 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { address, totalDeposited } = req.body;
+  const { address, totalDeposited: clientTotalDeposited } = req.body;
   if (!address) return res.status(400).json({ error: "Wallet requerida" });
 
   try {
     const history = await getCleanHistory(address);
-    // Usamos el balance actual que viene del contrato (totalDeposited)
-    const result = computeFinancialReputation(history, Number(totalDeposited) || 0);
+
+    // Preferimos usar el saldo on-chain como fuente de verdad si el cliente no lo provee
+    let effectiveTotal = Number(clientTotalDeposited) || 0;
+    if (!effectiveTotal || effectiveTotal <= 0) {
+      try {
+        const resp = await fetch(`${HORIZON_URL}/accounts/${address}`);
+        if (resp.ok) {
+          const acct = await resp.json();
+          const native = (acct.balances || []).find(b => b.asset_type === 'native');
+          effectiveTotal = Number(native?.balance) || effectiveTotal;
+        }
+      } catch (e) {
+        // Si falla la lectura on-chain, seguimos con el fallback 0
+      }
+    }
+
+    const result = computeFinancialReputation(history, effectiveTotal);
     
     return res.status(200).json(result);
   } catch (error) {

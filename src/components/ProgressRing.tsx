@@ -81,6 +81,10 @@ const ProgressRing = () => {
       const onChainData = await onChainRes.json();
       const scoreData = await scoreRes.json();
 
+      // DEBUG: mostrar datos en consola para diagnosticar el Ring Score
+      console.debug("[DEBUG] onChainData:", onChainData);
+      console.debug("[DEBUG] scoreData:", scoreData);
+
       const eligibility = scoreData?.eligibility || {};
       const txCount = Number(eligibility?.historyCount) || 0;
       const minRequired = Number(eligibility?.minHistoryRequired) || 30;

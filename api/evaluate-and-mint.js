@@ -5,11 +5,15 @@ import {
   Networks, 
   Operation, 
   BASE_FEE, 
-  nativeToScVal 
+  nativeToScVal,
+  Transaction
 } from "@stellar/stellar-sdk";
+import { consumeNonce } from "./nonce";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+const HORIZON_URL = "https://horizon-testnet.stellar.org";
 
 const RPC_URL = "https://soroban-testnet.stellar.org";
 const server = new rpc.Server(RPC_URL);
@@ -99,6 +103,7 @@ export default async function handler(req, res) {
   }
 
   const { userAddress, deposits, totalVolume } = req.body || {};
+  const { signedTxXdr, nonce, signature } = req.body || {};
 
   if (!userAddress) {
     return res.status(400).json({ error: 'userAddress es requerido', status: 'error' });
@@ -108,11 +113,82 @@ export default async function handler(req, res) {
     ? deposits.reduce((acc, d) => acc + (Number(d?.amount) || 0), 0)
     : 0;
 
-  const effectiveTotalVolume = Number(totalVolume) || fallbackVolumeFromDeposits;
+  let effectiveTotalVolume = Number(totalVolume) || fallbackVolumeFromDeposits;
+
+  // Si el cliente no provee un volumen válido, intentamos leer el saldo on-chain como fuente de verdad
+  if (!effectiveTotalVolume || effectiveTotalVolume <= 0) {
+    try {
+      const resp = await fetch(`${HORIZON_URL}/accounts/${userAddress}`);
+      if (resp.ok) {
+        const acct = await resp.json();
+        const native = (acct.balances || []).find(b => b.asset_type === 'native');
+        effectiveTotalVolume = Number(native?.balance) || effectiveTotalVolume;
+      }
+    } catch (e) {
+      // Si falla la consulta on-chain, usamos el fallback calculado desde 'deposits'
+    }
+  }
 
   let tier;
   let tierName;
   try {
+    // Verificamos la prueba de propiedad: debe venir un signedTxXdr que contenga
+    // una operación ManageData con la clave 'vinculo_nonce' y el valor del nonce.
+    if (!nonce || !signedTxXdr) {
+      return res.status(400).json({ status: 'error', message: 'Falta nonce o signedTxXdr para verificar propiedad' });
+    }
+
+    // Consumir nonce (verifica existencia y expiración)
+    const okNonce = consumeNonce(userAddress, nonce);
+    if (!okNonce) {
+      return res.status(400).json({ status: 'error', message: 'Nonce inválido o expirado' });
+    }
+
+    try {
+      // Parseamos la transacción firmada y verificamos que la fuente coincida
+      const signedTx = TransactionBuilder.fromXDR(signedTxXdr, Networks.TESTNET);
+      // Verificamos que el tx tenga al menos una firma
+      if (!signedTx.signatures || signedTx.signatures.length === 0) {
+        return res.status(400).json({ status: 'error', message: 'Transacción sin firmas' });
+      }
+      // Verificamos que la transacción tenga una operación ManageData con clave 'vinculo_nonce'
+      const txOps = signedTx.operations || [];
+      const mdOp = txOps.find(op => (op.type === 'manageData' || op.type === 'manage_data') && op.name === 'vinculo_nonce');
+      if (!mdOp) {
+        return res.status(400).json({ status: 'error', message: 'Transacción no contiene nonce esperado' });
+      }
+      // El valor del manageData puede estar en mdOp.value o mdOp.data
+      const val = mdOp.value || mdOp.value || mdOp.data || null;
+      // Muchos build/transforms pueden devolver Buffer o string; comparamos como string
+      const valStr = val ? (typeof val === 'string' ? val : Buffer.from(val).toString()) : null;
+      if (valStr !== nonce) {
+        return res.status(400).json({ status: 'error', message: 'Nonce en transacción no coincide' });
+      }
+
+      // NOTE: Intentamos verificar la firma criptográficamente si es posible
+      try {
+        const txHash = signedTx.hash();
+        const kp = Keypair.fromPublicKey(userAddress);
+        let sigOk = false;
+        for (const s of signedTx.signatures) {
+          const sig = s.signature ? s.signature() : s;
+          try {
+            if (kp.verify(txHash, sig)) { sigOk = true; break; }
+          } catch (e) {
+            // ignore individual signature verification errors
+          }
+        }
+        if (!sigOk) {
+          return res.status(400).json({ status: 'error', message: 'Firma inválida' });
+        }
+      } catch (e) {
+        // Si falla la verificación detallada, abortamos para seguridad
+        return res.status(400).json({ status: 'error', message: 'No se pudo verificar la firma de la transacción' });
+      }
+    } catch (e) {
+      return res.status(400).json({ status: 'error', message: 'Error parseando XDR firmado' });
+    }
+
     const tierResult = await resolveTierFromCanonicalScore(req, userAddress, effectiveTotalVolume);
     tier = tierResult.tier;
     tierName = tierResult.tierName;

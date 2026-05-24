@@ -9,6 +9,9 @@ import WalletSetupModal from "@/components/WalletSetupModal";
 import NFTModal from "@/components/NFTModal";
 import logoVin from "@/assets/logo-vin.png";
 import { toast } from "@/hooks/use-toast";
+import { requestAccess, signTransaction } from "@stellar/freighter-api";
+import { rpc, TransactionBuilder, Networks, Operation, BASE_FEE } from "@stellar/stellar-sdk";
+import { RPC_URL } from "@/stellar/contracts";
 
 const Perfil = () => {
   const navigate = useNavigate();
@@ -157,6 +160,25 @@ const Perfil = () => {
             minHistoryRequired: Number(eligibility?.minHistoryRequired) || 30,
             isHistoryEligible: Boolean(eligibility?.isHistoryEligible),
           });
+
+          // Sync on-chain tier/credit after computing score so UI matches backend state
+          try {
+            const tierResponse = await fetch(`/api/get-available-credit`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userAddress: walletAddress })
+            });
+            if (tierResponse.ok) {
+              const tierData = await tierResponse.json();
+              if (tierData.success) {
+                setNftTier(tierData.tierName);
+                setAvailableCredit(tierData.availableCredit);
+                setRiskData(prev => ({ ...prev, tier: tierData.tier }));
+              }
+            }
+          } catch (err) {
+            console.warn('Error sincronizando tier despues de score:', err);
+          }
         }
       } catch (error) {
         console.error("Error sincronizando matemáticas:", error);
@@ -195,6 +217,15 @@ const Perfil = () => {
   const canMintUpgrade = eligibleTier > currentTier;
   const mintButtonDisabled = isMinting || !walletAddress || Number(onChainXLM) === 0 || !canMintUpgrade;
 
+  const tierNumberToName = (n: number) => {
+    if (n === 4) return 'Platino';
+    if (n === 3) return 'Diamante';
+    if (n === 2) return 'Oro';
+    if (n === 1) return 'Plata';
+    return 'Bronce';
+  };
+  const claimableTierName = tierNumberToName(eligibleTier);
+
   const mintButtonText = (() => {
     if (isMinting) return "Firmando en Soroban...";
     if (!walletAddress) return "Conecta tu wallet para mintear";
@@ -208,6 +239,38 @@ const Perfil = () => {
     if (!walletAddress) return;
     setIsMinting(true);
     try {
+      // 1) Pedimos un nonce al servidor
+      const nonceRes = await fetch(`/api/nonce`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: walletAddress })
+      });
+      const nonceData = await nonceRes.json();
+      if (!nonceData?.nonce) throw new Error("No se obtuvo nonce");
+
+      // 2) Pedimos acceso a Freighter y firmamos una transacción de ManageData con el nonce
+      const access = await requestAccess();
+      if (!access?.address || access.address !== walletAddress) throw new Error("Conecta la misma wallet en Freighter");
+
+      const server = new rpc.Server(RPC_URL);
+      const account = await server.getAccount(walletAddress);
+
+      const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
+        .addOperation(
+          Operation.manageData({ name: 'vinculo_nonce', value: nonceData.nonce })
+        )
+        .setTimeout(30)
+        .build();
+
+      // NOTE: avoid server.prepareTransaction with the Soroban RPC here because
+      // it rejects ManageData ops. Use the raw XDR from the built transaction
+      // so Freighter can sign the ManageData nonce operation.
+      const txXdr = tx.toXDR();
+      const signResponse = await signTransaction(txXdr, { networkPassphrase: Networks.TESTNET });
+      if (signResponse.error || !signResponse.signedTxXdr) {
+        throw new Error("Firma cancelada en Freighter");
+      }
+
       const response = await fetch(`/api/evaluate-and-mint`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,6 +279,8 @@ const Perfil = () => {
           totalVolume: Number(onChainXLM),
           depositCount: Number(onChainXLM) > 0 ? 1 : 0,
           deposits: [{ amount: Number(onChainXLM), daysAgo: 0 }],
+          signedTxXdr: signResponse.signedTxXdr,
+          nonce: nonceData.nonce
         })
       });
       const data = await response.json();
@@ -306,11 +371,17 @@ const Perfil = () => {
               {loadingProfile ? "..." : availableCredit}
             </p>
             <p className="text-[10px] text-emerald-600/80 font-bold uppercase tracking-wider">Crédito XLM</p>
+            {canMintUpgrade && (
+              <div className="mt-2 text-xs font-semibold text-emerald-800">Reclamar NFT {claimableTierName} disponible</div>
+            )}
           </div>
 
           <div className="card-elevated p-4 text-center bg-primary/5 border border-primary/20">
             <Shield className="w-4 h-4 text-primary mx-auto mb-1.5" />
             <p className="text-lg font-bold text-primary">{loadingProfile ? "..." : nftTier}</p>
+            {canMintUpgrade && (
+              <p className="text-[11px] text-primary/80 font-medium mt-1">Eligible: {claimableTierName}</p>
+            )}
             <p className="text-[10px] text-primary/80 font-semibold uppercase tracking-wider">Nivel NFT</p>
           </div>
         </div>
