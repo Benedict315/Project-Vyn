@@ -1,20 +1,17 @@
 import { useState, useEffect } from "react";
-import { X, Fingerprint, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import { X, Fingerprint, CheckCircle2, AlertCircle, ExternalLink, Smartphone } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { walletAdapter } from "@/wallet";
+import { useMobileWallet } from "@/hooks/useMobileWallet";
 import confetti from "canvas-confetti";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  TransactionBuilder, 
-  Networks, 
-  Operation, 
-  BASE_FEE, 
-  nativeToScVal, 
-  rpc, 
-  Transaction 
+import {
+  TransactionBuilder,
+  Networks,
+  Operation,
+  BASE_FEE,
+  nativeToScVal,
+  rpc,
 } from "@stellar/stellar-sdk";
-
-// Importamos tus constantes (asegúrate de que la ruta sea correcta)
 import { CONTRACT_ID, RPC_URL } from "@/stellar/contracts";
 
 interface Props {
@@ -22,46 +19,48 @@ interface Props {
   onClose: () => void;
 }
 
+// Map raw errors to user-friendly messages
+function friendlyDepositError(msg: string, cancelled: boolean): string {
+  if (cancelled) return "Firma cancelada. Puedes intentarlo de nuevo.";
+  if (msg.includes("Cuenta incorrecta")) return msg; // already friendly
+  if (msg.includes("popup")) return "El popup fue bloqueado. Permite ventanas emergentes e intenta de nuevo.";
+  if (msg.includes("Instala") || msg.includes("not installed")) return "Wallet no disponible. Conecta tu wallet primero.";
+  if (msg.includes("Acceso denegado") || msg.includes("rejected")) return "Acceso denegado. Aprueba la solicitud en tu wallet.";
+  if (msg.includes("insufficient")) return "Saldo insuficiente para cubrir la transacción y las comisiones.";
+  return msg || "Error al procesar el depósito. Intenta de nuevo.";
+}
+
 const DepositModal = ({ open, onClose }: Props) => {
   const { addDeposit, depositsCount, requiredDeposits, isUnlocked, setShowUnlockCelebration } = useApp();
+  const { isMobile, provider, connect, sign } = useMobileWallet();
+
   const [amount, setAmount] = useState("50");
   const [step, setStep] = useState<"input" | "signing" | "success" | "error">("input");
   const [errorMsg, setErrorMsg] = useState("");
   const [txHash, setTxHash] = useState("");
-
-  // 🔐 CANDADO DE SEGURIDAD PARA FREIGHTER
   const [registeredWallet, setRegisteredWallet] = useState<string | null>(null);
 
-  // 📡 Obtenemos la wallet real del usuario desde Supabase al cargar el modal
+  // Fetch the wallet address registered in Supabase for security validation
   useEffect(() => {
-    let isMounted = true;
-
+    let mounted = true;
     const fetchWallet = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-
         const { data: profile } = await supabase
           .from("profiles")
           .select("wallet_address")
           .eq("user_id", user.id)
           .single();
-
-        if (profile?.wallet_address && isMounted) {
+        if (profile?.wallet_address && mounted) {
           setRegisteredWallet(profile.wallet_address);
         }
-      } catch (error) {
-        console.error("Error obteniendo la wallet registrada:", error);
+      } catch (e) {
+        console.error("Error obteniendo wallet registrada:", e);
       }
     };
-
-    if (open) {
-      fetchWallet();
-    }
-
-    return () => {
-      isMounted = false;
-    };
+    if (open) fetchWallet();
+    return () => { mounted = false; };
   }, [open]);
 
   if (!open) return null;
@@ -86,23 +85,24 @@ const DepositModal = ({ open, onClose }: Props) => {
     setErrorMsg("");
 
     try {
-      // 1. Inicializar Servidor RPC y verificar conexión
       const server = new rpc.Server(RPC_URL);
-      const connected = await walletAdapter.isConnected();
-      if (!connected) throw new Error("Instala Freighter para continuar");
+      // 1. Ensure we have a connected wallet address
+      const connectResult = await connect();
+      if (!connectResult.ok) {
+        throw Object.assign(new Error(connectResult.error), { cancelled: connectResult.cancelled });
+      }
+      const sourcePublicKey = connectResult.address;
 
-      const sourcePublicKey = await walletAdapter.connect();
-
-      // 🛡️ CANDADO DE SEGURIDAD
+      // 2. Security: validate against registered wallet
       if (registeredWallet && sourcePublicKey !== registeredWallet) {
-        const shortWallet = `${registeredWallet.substring(0, 4)}...${registeredWallet.substring(52)}`;
-        throw new Error(`Cuenta incorrecta en Freighter. Por favor cambia a tu cuenta registrada: ${shortWallet}`);
+        const short = `${registeredWallet.substring(0, 4)}...${registeredWallet.substring(52)}`;
+        throw new Error(`Cuenta incorrecta. Usa tu cuenta registrada: ${short}`);
       }
 
+      // 3. Fetch account and build transaction
       const account = await server.getAccount(sourcePublicKey);
-      const amountInStroops = BigInt(Math.floor(val * 10000000));
+      const amountInStroops = BigInt(Math.floor(val * 10_000_000));
 
-      // 2. Construir la transacción de invocación
       let transaction = new TransactionBuilder(account, {
         fee: BASE_FEE,
         networkPassphrase: Networks.TESTNET,
@@ -120,59 +120,71 @@ const DepositModal = ({ open, onClose }: Props) => {
         .setTimeout(30)
         .build();
 
-      // 3. Preparar la transacción (Calcula footprint y gas para Soroban)
+      // 4. Prepare (calculates Soroban footprint + gas)
       transaction = await server.prepareTransaction(transaction);
 
-      // 4. Firmar con el adaptador
-      const signedXdr = await walletAdapter.sign(transaction.toXDR(), Networks.TESTNET);
-
-      // 5. Enviar a la red
-      const transactionToSubmit = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
-      const submitRes = await server.sendTransaction(transactionToSubmit) as any;
-
-      // 6. Validar estado
-      const currentStatus = submitRes.status ? submitRes.status.toUpperCase() : "";
-
-      if (currentStatus === "PENDING" || currentStatus === "SUCCESS") {
-        setTxHash(submitRes.hash);
-        
-        const wasLocked = !isUnlocked;
-        const willUnlock = depositsCount + 1 >= requiredDeposits;
-        addDeposit(val);
-        
-        setStep("success");
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.65 } });
-
-        if (wasLocked && willUnlock) {
-          setTimeout(() => setShowUnlockCelebration(true), 800);
-        }
-      } else {
-        console.error("Respuesta de la red fallida:", submitRes);
-        throw new Error(submitRes.errorResultXdr || "La transacción fue rechazada por la red");
+      // 5. Sign via the appropriate provider (Freighter on desktop, Albedo on mobile)
+      const signResult = await sign(transaction.toXDR());
+      if (!signResult.ok) {
+        throw Object.assign(new Error(signResult.error), { cancelled: signResult.cancelled });
       }
 
+      // 6. Submit
+      const txToSubmit = TransactionBuilder.fromXDR(signResult.signedXdr, Networks.TESTNET);
+      const submitRes = await server.sendTransaction(txToSubmit) as any;
+      const status = (submitRes.status ?? "").toUpperCase();
+
+      if (status !== "PENDING" && status !== "SUCCESS") {
+        throw new Error(submitRes.errorResultXdr || "La transacción fue rechazada por la red.");
+      }
+
+      setTxHash(submitRes.hash);
+
+      const wasLocked = !isUnlocked;
+      const willUnlock = depositsCount + 1 >= requiredDeposits;
+      addDeposit(val);
+      setStep("success");
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.65 } });
+
+      if (wasLocked && willUnlock) {
+        setTimeout(() => setShowUnlockCelebration(true), 800);
+      }
     } catch (err: any) {
-      console.error("Deposit Error Details:", err);
-      setErrorMsg(err.message || "Error al procesar el depósito");
+      console.error("Deposit error:", err);
+      setErrorMsg(friendlyDepositError(err.message ?? "", !!err.cancelled));
       setStep("error");
     }
   };
 
+  const providerLabel = provider === "albedo" ? "Albedo" : "Freighter";
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={step === "signing" ? undefined : handleClose} />
+      <div
+        className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
+        onClick={step === "signing" ? undefined : handleClose}
+      />
       <div className="relative bg-card rounded-t-3xl sm:rounded-2xl w-full max-w-md p-6 pb-8 animate-slide-up z-10">
         {step !== "signing" && (
-          <button onClick={handleClose} className="absolute right-4 top-4 p-2 rounded-full hover:bg-secondary active:scale-95 transition-all">
+          <button
+            onClick={handleClose}
+            className="absolute right-4 top-4 p-2 rounded-full hover:bg-secondary active:scale-95 transition-all"
+          >
             <X className="w-5 h-5 text-muted-foreground" />
           </button>
         )}
 
-        {/* INPUT STEP */}
+        {/* INPUT */}
         {step === "input" && (
           <>
-            <h2 className="text-xl font-bold text-foreground mb-6">Depositar Ganancias</h2>
-            <div className="mb-6">
+            <h2 className="text-xl font-bold text-foreground mb-1">Depositar Ganancias</h2>
+            {isMobile && (
+              <div className="flex items-center gap-1.5 mb-4 text-xs text-muted-foreground">
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Se firmará con {providerLabel}</span>
+              </div>
+            )}
+            <div className="mb-6 mt-4">
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Monto (XLM)</label>
               <input
                 type="number"
@@ -180,6 +192,7 @@ const DepositModal = ({ open, onClose }: Props) => {
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full text-3xl font-bold text-foreground bg-secondary rounded-xl px-4 py-4 outline-none focus:ring-2 focus:ring-primary/20 transition-shadow tabular-nums"
                 min="1"
+                inputMode="decimal"
               />
             </div>
 
@@ -202,25 +215,29 @@ const DepositModal = ({ open, onClose }: Props) => {
               className="btn-emerald w-full flex items-center justify-center gap-2 py-4 text-base"
             >
               <Fingerprint className="w-5 h-5" />
-              Confirmar con Freighter
+              Confirmar con {providerLabel}
             </button>
           </>
         )}
 
-        {/* SIGNING STEP */}
+        {/* SIGNING */}
         {step === "signing" && (
           <div className="flex flex-col items-center py-10">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-5">
-              <Fingerprint className="w-8 h-8 text-primary animate-pulse" />
+              {isMobile
+                ? <Smartphone className="w-8 h-8 text-primary animate-pulse" />
+                : <Fingerprint className="w-8 h-8 text-primary animate-pulse" />}
             </div>
             <p className="text-lg font-bold text-foreground mb-1">Preparando contrato...</p>
             <p className="text-sm text-muted-foreground text-center max-w-[260px]">
-              Calculando recursos y esperando confirmación en Freighter.
+              {isMobile
+                ? `Aprueba la transacción en ${providerLabel}.`
+                : `Calculando recursos y esperando confirmación en ${providerLabel}.`}
             </p>
           </div>
         )}
 
-        {/* SUCCESS STEP */}
+        {/* SUCCESS */}
         {step === "success" && (
           <div className="flex flex-col items-center py-8 animate-scale-up">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
@@ -230,7 +247,6 @@ const DepositModal = ({ open, onClose }: Props) => {
             <p className="text-sm text-muted-foreground mb-4">
               Se depositaron <span className="font-bold text-foreground">{amount} XLM</span>
             </p>
-
             {txHash && (
               <a
                 href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
@@ -242,7 +258,6 @@ const DepositModal = ({ open, onClose }: Props) => {
                 Ver en el explorador
               </a>
             )}
-
             <button
               onClick={handleClose}
               className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all"
@@ -252,7 +267,7 @@ const DepositModal = ({ open, onClose }: Props) => {
           </div>
         )}
 
-        {/* ERROR STEP */}
+        {/* ERROR */}
         {step === "error" && (
           <div className="flex flex-col items-center py-8 animate-scale-up">
             <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-5">
@@ -260,7 +275,6 @@ const DepositModal = ({ open, onClose }: Props) => {
             </div>
             <p className="text-lg font-bold text-foreground mb-2">Error en el depósito</p>
             <p className="text-sm text-muted-foreground text-center max-w-[280px] mb-6">{errorMsg}</p>
-
             <div className="w-full flex gap-3">
               <button
                 onClick={handleClose}
