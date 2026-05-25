@@ -9,6 +9,25 @@ Project Vyn is a Vite + React application backed by Supabase and Stellar/Soroban
 3. Install dependencies with `npm install`.
 4. Start the app with `npm run dev`.
 
+## Run Locally From Scratch
+
+Use this flow if you are a new contributor and want to reproduce the app on your machine:
+
+1. Clone the repository.
+2. Copy `.env.example` to `.env.local`.
+3. Fill in the environment variables with your own values or with the team-provided testnet values.
+4. Run `npm install` in the repo root.
+5. Start the frontend with `npm run dev`.
+6. If you need to verify backend behavior locally, run `node backend/server.js` from the `backend/` folder in a separate terminal.
+
+### What you need to replicate
+
+- A Supabase project or access to the shared test project.
+- A Stellar testnet admin account for `SECRET_KEY_ADMIN` and `PUBLIC_KEY_ADMIN`.
+- The deployed Soroban contract IDs for `NFT_CONTRACT_ID` and `VITE_LENDING_CONTRACT_ID`.
+
+If you do not have those values yet, you can still read the code and work on UI or docs changes, but wallet, scoring, and minting flows will not work end to end.
+
 ## Environment Variables
 
 The project uses the following variables:
