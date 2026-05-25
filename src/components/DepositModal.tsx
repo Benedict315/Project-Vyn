@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Fingerprint, CheckCircle2, AlertCircle, ExternalLink, Smartphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "@/context/AppContext";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
 import confetti from "canvas-confetti";
@@ -33,7 +34,7 @@ function friendlyDepositError(msg: string, cancelled: boolean): string {
 const DepositModal = ({ open, onClose }: Props) => {
   const { addDeposit, depositsCount, requiredDeposits, isUnlocked, setShowUnlockCelebration } = useApp();
   const { isMobile, provider, connect, sign } = useMobileWallet();
-
+  const { t } = useTranslation();
   const [amount, setAmount] = useState("50");
   const [step, setStep] = useState<"input" | "signing" | "success" | "error">("input");
   const [errorMsg, setErrorMsg] = useState("");
@@ -177,15 +178,15 @@ const DepositModal = ({ open, onClose }: Props) => {
         {/* INPUT */}
         {step === "input" && (
           <>
-            <h2 className="text-xl font-bold text-foreground mb-1">Depositar Ganancias</h2>
+            <h2 className="text-xl font-bold text-foreground mb-6">{t("deposit.title")}</h2>
             {isMobile && (
               <div className="flex items-center gap-1.5 mb-4 text-xs text-muted-foreground">
                 <Smartphone className="w-3.5 h-3.5" />
-                <span>Se firmará con {providerLabel}</span>
+                <span>{t("deposit.sign_with", { provider: providerLabel })}</span>
               </div>
             )}
-            <div className="mb-6 mt-4">
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">Monto (XLM)</label>
+            <div className="mb-6">
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">{t("deposit.amount_label")}</label>
               <input
                 type="number"
                 value={amount}
@@ -205,7 +206,7 @@ const DepositModal = ({ open, onClose }: Props) => {
                     amount === String(v) ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"
                   }`}
                 >
-                  {v} XLM
+                  {v} {t("common.xlm")}
                 </button>
               ))}
             </div>
@@ -215,7 +216,7 @@ const DepositModal = ({ open, onClose }: Props) => {
               className="btn-emerald w-full flex items-center justify-center gap-2 py-4 text-base"
             >
               <Fingerprint className="w-5 h-5" />
-              Confirmar con {providerLabel}
+              {t("deposit.confirm_button")}
             </button>
           </>
         )}
@@ -228,11 +229,9 @@ const DepositModal = ({ open, onClose }: Props) => {
                 ? <Smartphone className="w-8 h-8 text-primary animate-pulse" />
                 : <Fingerprint className="w-8 h-8 text-primary animate-pulse" />}
             </div>
-            <p className="text-lg font-bold text-foreground mb-1">Preparando contrato...</p>
+            <p className="text-lg font-bold text-foreground mb-1">{t("deposit.signing_title")}</p>
             <p className="text-sm text-muted-foreground text-center max-w-[260px]">
-              {isMobile
-                ? `Aprueba la transacción en ${providerLabel}.`
-                : `Calculando recursos y esperando confirmación en ${providerLabel}.`}
+              {t("deposit.signing_description")}
             </p>
           </div>
         )}
@@ -243,9 +242,9 @@ const DepositModal = ({ open, onClose }: Props) => {
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
               <CheckCircle2 className="w-10 h-10 text-primary" />
             </div>
-            <p className="text-xl font-bold text-foreground mb-1">¡Depósito exitoso! 🎉</p>
+            <p className="text-xl font-bold text-foreground mb-1">{t("deposit.success_title")}</p>
             <p className="text-sm text-muted-foreground mb-4">
-              Se depositaron <span className="font-bold text-foreground">{amount} XLM</span>
+              {t("deposit.success_description", { amount })}
             </p>
             {txHash && (
               <a
@@ -255,14 +254,14 @@ const DepositModal = ({ open, onClose }: Props) => {
                 className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline mb-6"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                Ver en el explorador
+                {t("deposit.view_explorer")}
               </a>
             )}
             <button
               onClick={handleClose}
               className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all"
             >
-              Listo
+              {t("common.done")}
             </button>
           </div>
         )}
@@ -273,20 +272,20 @@ const DepositModal = ({ open, onClose }: Props) => {
             <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-5">
               <AlertCircle className="w-10 h-10 text-destructive" />
             </div>
-            <p className="text-lg font-bold text-foreground mb-2">Error en el depósito</p>
+            <p className="text-lg font-bold text-foreground mb-2">{t("common.error")}</p>
             <p className="text-sm text-muted-foreground text-center max-w-[280px] mb-6">{errorMsg}</p>
             <div className="w-full flex gap-3">
               <button
                 onClick={handleClose}
                 className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
               >
-                Cancelar
+                {t("common.cancel")}
               </button>
               <button
                 onClick={() => setStep("input")}
                 className="flex-1 rounded-xl bg-primary text-primary-foreground py-2.5 text-sm font-semibold shadow-sm hover:bg-primary/90 active:scale-[0.97] transition-all"
               >
-                Reintentar
+                {t("common.retry")}
               </button>
             </div>
           </div>

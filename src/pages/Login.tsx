@@ -1,21 +1,29 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Wallet, AlertCircle, ExternalLink, Smartphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import logoVin from "@/assets/logo-vin.png";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
 
-// Human-readable error messages
-function friendlyError(raw: string, cancelled: boolean): string {
-  if (cancelled) return "Conexión cancelada. Puedes intentarlo de nuevo cuando quieras.";
+// Human-readable error messages resolved through i18n
+function friendlyError(
+  raw: string,
+  cancelled: boolean,
+  t: (key: string) => string
+): string {
+  if (cancelled) return t("login.errors.cancelled");
   const lower = raw.toLowerCase();
-  if (lower.includes("popup")) return "El popup fue bloqueado. Permite ventanas emergentes para este sitio e intenta de nuevo.";
-  if (lower.includes("locked") || lower.includes("bloqueada")) return "Tu wallet está bloqueada. Desbloquéala e intenta de nuevo.";
-  if (lower.includes("network") || lower.includes("fetch")) return "Sin conexión a la red. Verifica tu internet e intenta de nuevo.";
-  return "Error de conexión. Verifica que tu wallet esté desbloqueada e intenta de nuevo.";
+  if (lower.includes("popup")) return t("login.errors.popup_blocked");
+  if (lower.includes("locked") || lower.includes("bloqueada"))
+    return t("login.errors.wallet_locked");
+  if (lower.includes("network") || lower.includes("fetch"))
+    return t("login.errors.no_network");
+  return t("login.errors.generic");
 }
 
 const Login = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { isMobile, isFreighterReady, connect } = useMobileWallet();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +45,7 @@ const Login = () => {
 
     if (!result.ok) {
       setLoading(false);
-      setError(friendlyError(result.error, result.cancelled));
+      setError(friendlyError(result.error, result.cancelled, t));
       return;
     }
 
@@ -48,15 +56,14 @@ const Login = () => {
     navigate("/", { replace: true });
   };
 
-  // ── Desktop: Freighter not installed ──────────────────────────────────────
   const showFreighterInstallPrompt = !isMobile && !isFreighterReady;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
       <div className="mb-10 text-center animate-in fade-in zoom-in duration-500">
-        <img src={logoVin} alt="Vyn" className="w-20 h-20 object-contain mx-auto mb-4" />
-        <h1 className="text-2xl font-black text-foreground tracking-tight italic">Vínculo</h1>
-        <p className="text-muted-foreground text-sm mt-1">Stellar Microcredits</p>
+        <img src={logoVin} alt={t("common.app_name")} className="w-20 h-20 object-contain mx-auto mb-4" />
+        <h1 className="text-2xl font-black text-foreground tracking-tight italic">{t("login.title")}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{t("common.app_tagline")}</p>
       </div>
 
       <div className="w-full max-w-sm space-y-4">
@@ -66,9 +73,9 @@ const Login = () => {
           <div className="space-y-4 animate-in fade-in">
             <div className="p-4 rounded-xl bg-primary/5 border border-primary/15 text-center">
               <Smartphone className="w-5 h-5 text-primary mx-auto mb-1" />
-              <p className="text-sm font-bold text-foreground mb-0.5">Wallet móvil</p>
+              <p className="text-sm font-bold text-foreground mb-0.5">{t("login.mobile_wallet_title")}</p>
               <p className="text-xs text-muted-foreground">
-                Usaremos Albedo, una wallet web de Stellar que funciona directamente en tu navegador — sin instalar nada.
+                {t("login.mobile_wallet_description")}
               </p>
             </div>
 
@@ -78,7 +85,7 @@ const Login = () => {
               className="w-full flex items-center justify-center gap-3 rounded-2xl bg-primary text-primary-foreground px-5 py-4 text-sm font-bold shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-60"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-              {loading ? "Abriendo Albedo..." : "Conectar con Albedo"}
+              {t("login.connect_albedo")}
             </button>
           </div>
         )}
@@ -91,7 +98,7 @@ const Login = () => {
             className="w-full flex items-center justify-center gap-3 rounded-2xl bg-primary text-primary-foreground px-5 py-4 text-sm font-bold shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-            {loading ? "Conectando..." : "Conectar con Freighter"}
+            {t("login.connect_freighter")}
           </button>
         )}
 
@@ -99,9 +106,9 @@ const Login = () => {
         {showFreighterInstallPrompt && (
           <div className="space-y-4 animate-in fade-in">
             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
-              <p className="text-sm font-bold text-amber-700 mb-1">Freighter no detectado</p>
+              <p className="text-sm font-bold text-amber-700 mb-1">{t("login.freighter_not_detected_title")}</p>
               <p className="text-xs text-amber-800/80">
-                Para usar Vínculo en escritorio necesitas la extensión Freighter, o puedes conectarte con Albedo directamente.
+                {t("login.freighter_not_detected_description")}
               </p>
             </div>
 
@@ -115,14 +122,13 @@ const Login = () => {
               Instalar Freighter
             </a>
 
-            {/* Albedo as desktop fallback too */}
             <button
               onClick={connectWallet}
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-2xl border border-border bg-card text-foreground px-5 py-3.5 text-sm font-semibold active:scale-[0.98] transition-all hover:bg-secondary/60 disabled:opacity-60"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-              {loading ? "Abriendo Albedo..." : "Continuar con Albedo (web)"}
+              {t("login.connect_albedo")}
             </button>
           </div>
         )}
@@ -140,7 +146,7 @@ const Login = () => {
       </div>
 
       <p className="mt-12 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] opacity-30">
-        Stellar Protocol · 2026
+        {t("common.footer_stellar")}
       </p>
     </div>
   );

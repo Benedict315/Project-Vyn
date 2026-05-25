@@ -1,16 +1,18 @@
 import { Home, Clock, ArrowDownToLine, User } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-
-const tabs = [
-  { icon: Home, label: "Inicio", id: "/" },
-  { icon: ArrowDownToLine, label: "Retiros", id: "/retiros" },
-  { icon: Clock, label: "Historial", id: "/historial" },
-  { icon: User, label: "Perfil", id: "/perfil" },
-];
+import { useTranslation } from "react-i18next";
 
 const BottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
+
+  const tabs = [
+    { icon: Home, label: t("nav.home"), id: "/" },
+    { icon: ArrowDownToLine, label: t("nav.withdrawals"), id: "/retiros" },
+    { icon: Clock, label: t("nav.history"), id: "/historial" },
+    { icon: User, label: t("nav.profile"), id: "/perfil" },
+  ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-card/90 backdrop-blur-lg border-t border-border">
