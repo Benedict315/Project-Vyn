@@ -104,6 +104,13 @@ export default {
           "0%, 100%": { boxShadow: "0 0 0 0 hsla(215, 80%, 39%, 0.4)" },
           "50%": { boxShadow: "0 0 0 12px hsla(215, 80%, 39%, 0)" },
         },
+        "shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-6px)" },
+          "40%": { transform: "translateX(6px)" },
+          "60%": { transform: "translateX(-4px)" },
+          "80%": { transform: "translateX(4px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -113,6 +120,7 @@ export default {
         "slide-up": "slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
         "check-draw": "check-draw 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         "pulse-emerald": "pulse-emerald 2s ease-in-out infinite",
+        "shake": "shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both",
       },
     },
   },

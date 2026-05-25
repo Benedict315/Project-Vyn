@@ -23,13 +23,6 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
     setConnecting(true);
     setError(null);
 
-    // On desktop without Freighter, guide user before attempting
-    if (!isMobile && !isFreighterReady) {
-      setError("Freighter no está instalado. Instálalo desde freighter.app o usa Albedo.");
-      setConnecting(false);
-      return;
-    }
-
     const result = await connect();
 
     if (!result.ok) {
@@ -63,7 +56,6 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
       return;
     }
 
-    // Persist provider choice for future signing
     if (walletProvider) {
       localStorage.setItem("vinculo_wallet_provider", walletProvider);
     }
@@ -113,6 +105,39 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                   </p>
                 )}
               </div>
+            ) : !isMobile && !isFreighterReady ? (
+              <div className="space-y-3">
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-center">
+                  <p className="text-xs font-bold text-amber-700 mb-0.5">Freighter no detectado</p>
+                  <p className="text-[11px] text-amber-800/70">
+                    Instala la extensión o continúa con Albedo, una wallet web que no requiere instalación.
+                  </p>
+                </div>
+                <button
+                  onClick={handleConnect}
+                  disabled={connecting}
+                  className="w-full rounded-xl border-2 border-dashed border-border bg-secondary/50 py-5 flex flex-col items-center gap-2 hover:bg-secondary transition-colors active:scale-[0.98] disabled:opacity-50"
+                >
+                  {connecting ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  ) : (
+                    <Wallet className="w-6 h-6 text-primary" />
+                  )}
+                  <span className="text-sm font-semibold text-foreground">
+                    {connecting ? "Abriendo Albedo..." : "Conectar con Albedo (web)"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">No requiere extensión</span>
+                </button>
+                <a
+                  href="https://www.freighter.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1 text-xs text-primary hover:underline py-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Instalar Freighter en su lugar
+                </a>
+              </div>
             ) : (
               <button
                 onClick={handleConnect}
@@ -130,17 +155,24 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
                 <span className="text-xs text-muted-foreground">
                   {isMobile
                     ? "Se abrirá Albedo en tu navegador"
-                    : isFreighterReady
-                    ? "Se abrirá la extensión Freighter"
-                    : "Se abrirá Albedo (no requiere extensión)"}
+                    : "Se abrirá la extensión Freighter"}
                 </span>
               </button>
             )}
 
             {error && (
-              <div className="flex items-start gap-2 bg-destructive/10 rounded-lg px-3 py-2.5">
-                <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive">{error}</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 bg-destructive/10 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive">{error}</p>
+                </div>
+                <button
+                  onClick={() => { setError(null); handleConnect(); }}
+                  disabled={connecting}
+                  className="w-full text-xs font-semibold text-primary hover:underline py-1 disabled:opacity-50"
+                >
+                  Intentar de nuevo
+                </button>
               </div>
             )}
 
@@ -162,7 +194,7 @@ const WalletSetupModal = ({ onComplete }: WalletSetupModalProps) => {
               )}
             </div>
 
-            {!isMobile && (
+            {!isMobile && isFreighterReady === false && address && (
               <a
                 href="https://www.freighter.app/"
                 target="_blank"

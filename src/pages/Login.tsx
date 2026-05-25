@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Loader2, Wallet, AlertCircle, ExternalLink, Smartphone } from "lucide-react";
 import logoVin from "@/assets/logo-vin.png";
 import { useMobileWallet } from "@/hooks/useMobileWallet";
@@ -6,14 +7,27 @@ import { useMobileWallet } from "@/hooks/useMobileWallet";
 // Human-readable error messages
 function friendlyError(raw: string, cancelled: boolean): string {
   if (cancelled) return "Conexión cancelada. Puedes intentarlo de nuevo cuando quieras.";
-  if (raw.toLowerCase().includes("popup")) return "El popup fue bloqueado. Permite ventanas emergentes para este sitio e intenta de nuevo.";
+  const lower = raw.toLowerCase();
+  if (lower.includes("popup")) return "El popup fue bloqueado. Permite ventanas emergentes para este sitio e intenta de nuevo.";
+  if (lower.includes("locked") || lower.includes("bloqueada")) return "Tu wallet está bloqueada. Desbloquéala e intenta de nuevo.";
+  if (lower.includes("network") || lower.includes("fetch")) return "Sin conexión a la red. Verifica tu internet e intenta de nuevo.";
   return "Error de conexión. Verifica que tu wallet esté desbloqueada e intenta de nuevo.";
 }
 
 const Login = () => {
-  const { isMobile, isFreighterReady, provider, connect } = useMobileWallet();
+  const navigate = useNavigate();
+  const { isMobile, isFreighterReady, connect } = useMobileWallet();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // If already connected, skip straight to the app
+  useEffect(() => {
+    const wallet = localStorage.getItem("vinculo_wallet");
+    const onboarded = localStorage.getItem("vinculo_onboarded");
+    if (wallet && onboarded === "1") {
+      navigate("/", { replace: true });
+    }
+  }, [navigate]);
 
   const connectWallet = async () => {
     setLoading(true);
@@ -31,8 +45,7 @@ const Login = () => {
     localStorage.setItem("vinculo_onboarded", "1");
     localStorage.setItem("vinculo_wallet_provider", result.provider);
 
-    // Small grace period for React Router to pick up the change
-    setTimeout(() => { window.location.href = "/"; }, 200);
+    navigate("/", { replace: true });
   };
 
   // ── Desktop: Freighter not installed ──────────────────────────────────────
@@ -116,7 +129,10 @@ const Login = () => {
 
         {/* ── Error notification ─────────────────────────────────────────── */}
         {error && (
-          <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold uppercase text-center animate-shake mt-4">
+          <div
+            key={error}
+            className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold uppercase text-center animate-shake mt-4"
+          >
             <AlertCircle className="w-4 h-4 inline mr-2 mb-0.5" />
             {error}
           </div>

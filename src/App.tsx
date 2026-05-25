@@ -63,11 +63,29 @@ const WalletGate = ({ children }: { children: React.ReactNode }) => {
       });
   }, [user]);
 
-  if (!checked) return null;
+  if (!checked)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
 
   return (
     <>
-      {needsWallet && <WalletSetupModal onComplete={() => setNeedsWallet(false)} />}
+      {needsWallet && (
+        <WalletSetupModal
+          onComplete={() => {
+            // Re-check profile after modal closes so we don't show it again
+            // if the save succeeded
+            supabase
+              .from("profiles")
+              .select("wallet_address")
+              .eq("user_id", user!.id)
+              .single()
+              .then(({ data }) => setNeedsWallet(!data?.wallet_address));
+          }}
+        />
+      )}
       {children}
     </>
   );
