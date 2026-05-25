@@ -1,6 +1,8 @@
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 // Para entornos de testnet reducimos el requisito para facilitar pruebas
 const MIN_TX_REQUIRED = 3;
+// Límite máximo de registros históricos a analizar (mejora estabilidad del score)
+const HISTORY_LIMIT = 30;
 
 // --- MOTOR DE REPUTACIÓN CALIBRADO (3000 XLM = 50 PTS) ---
 function computeFinancialReputation(history, totalBalance) {
@@ -131,7 +133,7 @@ async function getCleanHistory(userAddress) {
     const filtered = parsedFromOps
       .filter((r) => r.amount && r.amount >= MIN_AMOUNT)
       .sort((a, b) => b.date - a.date)
-      .slice(0, MIN_TX_REQUIRED);
+      .slice(0, HISTORY_LIMIT);
 
     return filtered.map((r) => ({
       amount: r.amount,
