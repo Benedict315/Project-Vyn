@@ -93,10 +93,11 @@ async function getCleanHistory(userAddress) {
     const data = await response.json();
 
     return (data._embedded.records || [])
-      .filter((op) => (op.type === 'account_debited' || op.type === 'account_credited') && Number(op.amount) > 0)
+      .filter((op) => (op.type === 'account_debited' || op.type === 'account_credited' || op.type === 'contract_credited') && Number(op.amount) > 0)
       .map((op) => ({
         amount: parseFloat(op.amount),
-        type: op.type === 'account_credited' ? 'deposit' : 'withdrawal',
+        // account_credited or contract_credited => deposit; account_debited => withdrawal
+        type: (op.type === 'account_credited' || op.type === 'contract_credited') ? 'deposit' : 'withdrawal',
         date: new Date(op.created_at),
       }))
       .slice(0, HISTORY_LIMIT);
