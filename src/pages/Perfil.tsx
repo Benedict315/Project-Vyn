@@ -150,8 +150,6 @@ const Perfil = () => {
         });
         const data = await response.json();
         if (data.score !== undefined) {
-          setRiskData(prev => ({ ...prev, score: data.score }));
-
           const eligibility = data?.eligibility || {};
           setHistoryGate({
             historyCount: Number(eligibility?.historyCount) || 0,
@@ -166,16 +164,35 @@ const Perfil = () => {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ userAddress: walletAddress })
             });
+
+            let blockchainTier = 0;
+            let blockchainTierName = "Bronce";
+            let blockchainAvailableCredit = 0;
+
             if (tierResponse.ok) {
               const tierData = await tierResponse.json();
               if (tierData.success) {
-                setNftTier(tierData.tierName);
-                setAvailableCredit(tierData.availableCredit);
-                setRiskData(prev => ({ ...prev, tier: tierData.tier }));
+                blockchainTier = Number(tierData.tier) || 0;
+                blockchainTierName = tierData.tierName || blockchainTierName;
+                blockchainAvailableCredit = tierData.availableCredit || 0;
+                setNftTier(blockchainTierName);
+                setAvailableCredit(blockchainAvailableCredit);
               }
             }
+
+            // Map tier to base score (same mapping used in ProgressRing)
+            const tierToScore: Record<number, number> = { 0: 0, 1: 50, 2: 150, 3: 500, 4: 1000 };
+            const baseScoreFromNFT = tierToScore[blockchainTier] || 0;
+
+            const dynamicScore = Number(data.score) || 0;
+            const finalScore = Math.max(baseScoreFromNFT, dynamicScore);
+
+            setRiskData(prev => ({ ...prev, score: finalScore, tier: blockchainTier }));
+
           } catch (err) {
             console.warn('Error sincronizando tier despues de score:', err);
+            // Fallback: set dynamic score
+            setRiskData(prev => ({ ...prev, score: data.score }));
           }
         }
       } catch (error) {
