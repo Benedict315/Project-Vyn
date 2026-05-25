@@ -86,60 +86,20 @@ function computeFinancialReputation(history, totalBalance) {
 // --- LECTOR DE 30 REGISTROS REALES ---
 async function getCleanHistory(userAddress) {
   try {
-    // Intentamos leer tanto effects como operations para capturar más tipos de actividad
-    const effectsRes = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=200&order=desc`);
-    const opsRes = await fetch(`${HORIZON_URL}/accounts/${userAddress}/operations?limit=200&order=desc`);
+    // Leemos efectos y mapeamos account_credited/account_debited a deposit/withdrawal.
+    const response = await fetch(`${HORIZON_URL}/accounts/${userAddress}/effects?limit=${HISTORY_LIMIT}&order=desc`);
+    if (!response.ok) return [];
 
-    const effects = effectsRes.ok ? (await effectsRes.json())._embedded.records : [];
-    const ops = opsRes.ok ? (await opsRes.json())._embedded.records : [];
+    const data = await response.json();
 
-    const MIN_AMOUNT = 0.1; // aceptar micropagos menores en testnet
-
-    const debitEffects = (effects || [])
-      .filter((effect) => effect.type === 'account_debited')
-      .map((effect) => ({
-        amount: effect.amount !== undefined ? parseFloat(effect.amount) : 0,
-        date: effect.created_at ? new Date(effect.created_at) : new Date(),
-        used: false,
+    return (data._embedded.records || [])
+      .filter((op) => (op.type === 'account_debited' || op.type === 'account_credited') && Number(op.amount) > 0)
+      .map((op) => ({
+        amount: parseFloat(op.amount),
+        type: op.type === 'account_credited' ? 'deposit' : 'withdrawal',
+        date: new Date(op.created_at),
       }))
-      .filter((effect) => effect.amount > 0);
-
-    const isSorobanInvocation = (type) =>
-      type === 'invoke_host_function' ||
-      type === 'invoke_contract_function' ||
-      type === 'invokeContractFunction' ||
-      type === 'invoke_contract';
-
-    const parsedFromOps = (ops || [])
-      .filter((op) => isSorobanInvocation(op.type))
-      .map((op) => {
-        const opDate = op.created_at ? new Date(op.created_at) : new Date();
-        const matchIndex = debitEffects.findIndex((effect) => {
-          if (effect.used) return false;
-          const diffMs = Math.abs(opDate.getTime() - effect.date.getTime());
-          return diffMs <= 5 * 60 * 1000;
-        });
-
-        const matched = matchIndex >= 0 ? debitEffects[matchIndex] : null;
-        if (matched) matched.used = true;
-
-        return {
-          amount: matched?.amount || 0,
-          type: 'deposit',
-          date: matched?.date || opDate,
-        };
-      });
-
-    const filtered = parsedFromOps
-      .filter((r) => r.amount && r.amount >= MIN_AMOUNT)
-      .sort((a, b) => b.date - a.date)
       .slice(0, HISTORY_LIMIT);
-
-    return filtered.map((r) => ({
-      amount: r.amount,
-      type: 'deposit',
-      date: r.date,
-    }));
   } catch (e) {
     return [];
   }
@@ -160,22 +120,23 @@ export default async function handler(req, res) {
   try {
     const history = await getCleanHistory(address);
 
-    // Preferimos usar el saldo on-chain como fuente de verdad si el cliente no lo provee
+    // Preferimos usar el total enviado por cliente; si no, intentamos leer on-chain.
     let effectiveTotal = Number(clientTotalDeposited) || 0;
     if (!effectiveTotal || effectiveTotal <= 0) {
       try {
         const resp = await fetch(`${HORIZON_URL}/accounts/${address}`);
         if (resp.ok) {
           const acct = await resp.json();
-          const native = (acct.balances || []).find(b => b.asset_type === 'native');
+          const native = (acct.balances || []).find((b) => b.asset_type === 'native');
           effectiveTotal = Number(native?.balance) || effectiveTotal;
         }
       } catch (e) {
-        // Si falla la lectura on-chain, seguimos con el fallback 0
+        // fallback a 0
       }
     }
 
-    const result = computeFinancialReputation(history, effectiveTotal);
+    // Clamp a 0 para evitar valores negativos que corrompan retentionRate
+    const result = computeFinancialReputation(history, Math.max(0, Number(effectiveTotal) || 0));
     
     return res.status(200).json(result);
   } catch (error) {
