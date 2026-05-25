@@ -54,6 +54,13 @@ The project uses the following variables:
 1. Use `PORT=3000` if you need a predictable local port.
 2. If your environment already uses another port, you can change it.
 
+## Architecture
+
+Vyn has four layers: a React frontend, Vercel serverless API functions, Supabase for auth and profiles, and three Soroban smart contracts on Stellar Testnet.
+
+- [Architecture overview](docs/architecture.md) — layers, components, contracts, and where to make common changes.
+- [Core flows](docs/flows.md) — step-by-step walkthroughs of auth, deposit, scoring/minting, credit, and loan flows.
+
 ## Notes For Collaborators
 
 - Do not commit `.env.local`.
